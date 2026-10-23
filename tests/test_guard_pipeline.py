@@ -8,6 +8,7 @@ from aegis.pipeline import HashChainLog, SecureCodeRunner
     "import math\nprint(math.sqrt(16))",
     "from collections import Counter\nprint(Counter('aab'))",
     "print(sum(range(10)))",
+    "if __name__ == '__main__':\n    print('{}'.format(1))",
 ])
 def test_guard_allows_safe_code(code):
     assert check_code(code).allowed
@@ -24,6 +25,7 @@ def test_guard_allows_safe_code(code):
     "().__class__.__bases__",
     "getattr(__builtins__, 'open')",
     "import urllib.request",
+    "print('{0.__class__}'.format(1))",
     "def broken(:",
 ])
 def test_guard_blocks_dangerous_code(code):

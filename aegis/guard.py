@@ -4,6 +4,7 @@ This is a policy layer, NOT an isolation boundary. Real isolation comes from
 an IsolationBackend (e.g. Docker); the guard decides what may reach it.
 """
 import ast
+import re
 from dataclasses import dataclass, field
 
 ALLOWED_IMPORTS = frozenset({
@@ -15,6 +16,8 @@ BLOCKED_CALLS = frozenset({
     "open", "eval", "exec", "compile", "__import__", "input", "breakpoint",
     "getattr", "setattr", "delattr", "globals", "locals", "vars",
 })
+
+_FORMAT_DUNDER = re.compile(r"\{[^{}]*__")
 
 
 @dataclass(frozen=True)
@@ -50,6 +53,9 @@ def check_code(code: str) -> Verdict:
         elif isinstance(node, ast.Name):
             if node.id in {"__builtins__", "__import__"}:
                 reasons.append(f"use of '{node.id}' is not allowed")
+        elif (isinstance(node, ast.Constant) and isinstance(node.value, str)
+              and _FORMAT_DUNDER.search(node.value)):
+            reasons.append("format-string access to dunder attributes is not allowed")
 
     unique = tuple(dict.fromkeys(reasons))
     return Verdict(not unique, unique)
