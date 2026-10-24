@@ -74,16 +74,27 @@ class NebiusClient:
             )
         return strip_reasoning(content)
 
-    def propose_code(self, task: str) -> str:
+    def propose_code(self, task: str, feedback: list[str] | None = None) -> str:
         system = (
             "You write short, self-contained Python 3 scripts. "
             "Reply with ONE ```python code block and nothing else. "
             "Print the final result."
         )
+        content = task
+        if feedback:
+            from aegis.guard import ALLOWED_IMPORTS
+
+            content = (
+                f"{task}\n\nYour previous code was rejected by the security "
+                f"policy: {'; '.join(feedback)}. Rewrite it using only these "
+                f"modules: {', '.join(sorted(ALLOWED_IMPORTS))}, with no file, "
+                "network or process access. If the task cannot be done safely, "
+                "print a short explanation instead."
+            )
         answer = self.chat(
             [
                 {"role": "system", "content": system},
-                {"role": "user", "content": task},
+                {"role": "user", "content": content},
             ]
         )
         return extract_code(answer)

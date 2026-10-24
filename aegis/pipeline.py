@@ -1,4 +1,8 @@
-﻿"""LLM proposes code -> guard checks -> sandbox runs -> tamper-evident log."""
+﻿"""LLM proposes code -> guard checks -> sandbox runs -> tamper-evident log.
+
+With max_attempts > 1 the guard's rejection reasons are fed back to the LLM,
+which gets another chance to write a compliant program.
+"""
 import hashlib
 import json
 from dataclasses import dataclass, field
@@ -45,25 +49,48 @@ class RunReport:
     stdout: str = ""
     stderr: str = ""
     reasons: tuple[str, ...] = field(default_factory=tuple)
+    attempts: int = 1
 
 
 class SecureCodeRunner:
-    def __init__(self, llm, sandbox, guard=check_code, log=None):
+    def __init__(self, llm, sandbox, guard=check_code, log=None,
+                 max_attempts: int = 1):
+        if max_attempts < 1:
+            raise ValueError("max_attempts must be at least 1.")
         self.llm, self.sandbox, self.guard = llm, sandbox, guard
         self.log = log if log is not None else HashChainLog()
+        self.max_attempts = max_attempts
+
+    def _propose(self, task: str, feedback):
+        if feedback:
+            return self.llm.propose_code(task, feedback=feedback)
+        return self.llm.propose_code(task)
 
     def run(self, task: str) -> RunReport:
-        code = self.llm.propose_code(task)
-        self.log.append("proposed", {"task": task, "code": code})
+        feedback = None
+        report = None
+        for attempt in range(1, self.max_attempts + 1):
+            code = self._propose(task, feedback)
+            self.log.append("proposed", {
+                "task": task, "code": code, "attempt": attempt,
+            })
 
-        verdict = self.guard(code)
-        if not verdict.allowed:
-            self.log.append("blocked", {"reasons": list(verdict.reasons)})
-            return RunReport(task, "blocked", code, reasons=verdict.reasons)
+            verdict = self.guard(code)
+            if verdict.allowed:
+                result = self.sandbox.run(code)
+                self.log.append("executed", {
+                    "success": result.success,
+                    "exit_code": result.exit_code,
+                    "attempt": attempt,
+                })
+                status = "executed" if result.success else "failed"
+                return RunReport(task, status, code, result.stdout,
+                                 result.stderr, attempts=attempt)
 
-        result = self.sandbox.run(code)
-        self.log.append("executed", {
-            "success": result.success, "exit_code": result.exit_code,
-        })
-        status = "executed" if result.success else "failed"
-        return RunReport(task, status, code, result.stdout, result.stderr)
+            self.log.append("blocked", {
+                "reasons": list(verdict.reasons), "attempt": attempt,
+            })
+            feedback = list(verdict.reasons)
+            report = RunReport(task, "blocked", code,
+                               reasons=verdict.reasons, attempts=attempt)
+        return report

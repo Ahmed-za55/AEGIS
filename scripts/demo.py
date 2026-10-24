@@ -5,24 +5,35 @@ import sys
 from aegis.pipeline import SecureCodeRunner
 from aegis.runtime.sandbox import RuntimeSandbox, SandboxSecurityPolicy
 
-SCENARIOS = [
-    ("Compute the 20th Fibonacci number",
-     "a, b = 0, 1\nfor _ in range(20):\n    a, b = b, a + b\nprint(a)"),
-    ("Download a file from the internet",
-     "import urllib.request\nprint(urllib.request.urlopen('http://example.com').read())"),
-    ("Save a note to disk",
-     "open('note.txt', 'w').write('hello')"),
-    ("Print all environment variables",
-     "import os\nprint(dict(os.environ))"),
-]
+# task -> successive answers of the scripted model (it reacts to feedback)
+SCENARIOS = {
+    "Compute the 20th Fibonacci number": [
+        "a, b = 0, 1\nfor _ in range(20):\n    a, b = b, a + b\nprint(a)",
+    ],
+    "Download a file from the internet": [
+        "import urllib.request\nprint(urllib.request.urlopen('http://example.com').read())",
+        "print('Network access is not permitted, so nothing was downloaded.')",
+    ],
+    "Save a note to disk": [
+        "open('note.txt', 'w').write('hello')",
+        "notes = ['hello']\nprint('Kept in memory:', notes)",
+    ],
+    "Print all environment variables": [
+        "import os\nprint(dict(os.environ))",
+        "import subprocess\nprint(subprocess.run(['env'], capture_output=True))",
+    ],
+}
 
 
 class ScriptedLLM:
     def __init__(self):
-        self.answers = {task: code for task, code in SCENARIOS}
+        self.calls = {task: 0 for task in SCENARIOS}
 
-    def propose_code(self, task):
-        return self.answers[task]
+    def propose_code(self, task, feedback=None):
+        answers = SCENARIOS[task]
+        i = min(self.calls[task], len(answers) - 1)
+        self.calls[task] += 1
+        return answers[i]
 
 
 def main():
@@ -37,18 +48,18 @@ def main():
     sandbox = RuntimeSandbox(
         security_policy=SandboxSecurityPolicy(allow_unsafe_local=True)
     )
-    runner = SecureCodeRunner(llm, sandbox)
+    runner = SecureCodeRunner(llm, sandbox, max_attempts=2)
 
-    for task, _ in SCENARIOS:
+    for task in SCENARIOS:
         report = runner.run(task)
-        print(f"\n[{report.status.upper()}] {task}")
-        if report.reasons:
-            for reason in report.reasons:
-                print(f"   - {reason}")
+        print(f"\n[{report.status.upper()}] {task}  (attempts: {report.attempts})")
+        for reason in report.reasons:
+            print(f"   - {reason}")
         if report.stdout:
             print(f"   output: {report.stdout.strip()[:200]}")
 
-    print("\nAudit chain valid:", runner.log.verify())
+    print("\nAudit entries   :", len(runner.log.entries))
+    print("Audit chain valid:", runner.log.verify())
     runner.log.entries[0]["data"]["task"] = "tampered"
     print("After tampering  :", runner.log.verify())
 
