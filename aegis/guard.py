@@ -20,6 +20,7 @@ ALLOWED_MODULES = ALLOWED_IMPORTS | {"collections.abc"}
 BLOCKED_NAMES = frozenset({
     "open", "eval", "exec", "compile", "__import__", "__builtins__", "input",
     "breakpoint", "getattr", "setattr", "delattr", "globals", "locals", "vars",
+    "help", "license", "copyright", "credits", "exit", "quit",
 })
 
 # Attributes that give access to other modules or to I/O even when reached
@@ -29,6 +30,8 @@ FORBIDDEN_ATTRS = frozenset({
     "shutil", "socket", "pathlib", "ctypes", "enum", "modules", "system",
     "popen", "environ", "getenv", "open", "format_map", "vformat",
     "get_field", "get_value", "Formatter",
+    # hidden eval: typing evaluates string annotations
+    "get_type_hints", "ForwardRef", "singledispatch", "singledispatchmethod",
 })
 
 _FORMAT_DUNDER = re.compile(r"\{[^{}]*__")

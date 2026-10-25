@@ -29,16 +29,39 @@ class HashChainLog:
         self.entries.append(entry)
         return entry
 
-    def verify(self) -> bool:
+    def first_invalid(self):
+        """Index of the first entry that breaks the chain, else None."""
         prev = GENESIS
         for i, entry in enumerate(self.entries):
-            body = {k: entry[k] for k in ("index", "event", "data", "prev")}
-            if entry["index"] != i or entry["prev"] != prev:
-                return False
-            if entry["hash"] != self._digest(body):
-                return False
+            try:
+                body = {k: entry[k] for k in ("index", "event", "data", "prev")}
+                ok = (entry["index"] == i and entry["prev"] == prev
+                      and entry["hash"] == self._digest(body))
+            except (KeyError, TypeError):
+                ok = False
+            if not ok:
+                return i
             prev = entry["hash"]
-        return True
+        return None
+
+    def verify(self) -> bool:
+        return self.first_invalid() is None
+
+    def head(self) -> str:
+        """Hash of the last entry. Store it elsewhere to detect truncation."""
+        return self.entries[-1]["hash"] if self.entries else GENESIS
+
+    def save(self, path) -> None:
+        with open(path, "w", encoding="utf-8") as fh:
+            for entry in self.entries:
+                fh.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
+
+    @classmethod
+    def load(cls, path):
+        log = cls()
+        with open(path, encoding="utf-8") as fh:
+            log.entries = [json.loads(line) for line in fh if line.strip()]
+        return log
 
 
 @dataclass

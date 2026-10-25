@@ -10,7 +10,8 @@
 | alias | 4/4 |
 | module-attr | 6/6 |
 | format | 2/2 |
-| **Total** | **34/34** |
+| hidden-eval | 4/4 |
+| **Total** | **38/38** |
 
 Benign programs allowed: **14/14**
 
