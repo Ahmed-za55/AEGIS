@@ -46,8 +46,12 @@ pip install -r requirements.txt
 $env:PYTHONPATH = "."
 
 pytest -q                       # full test suite
-python scripts/demo.py          # offline demo with a scripted "LLM"
-python scripts/benchmark.py     # red-team benchmark
+python -m aegis demo            # offline demo with a scripted "LLM"
+python -m aegis bench           # red-team benchmark
+python -m aegis report          # writes docs/report.html
+python -m aegis audit-demo      # audit tampering is detected
+python -m aegis verify-demo     # a lying isolation backend is caught
+python -m aegis mcp --unsafe-local   # MCP server (demo mode)
 ~~~
 
 Live mode with a real model:
