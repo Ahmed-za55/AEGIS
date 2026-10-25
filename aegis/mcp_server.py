@@ -11,6 +11,7 @@ import sys
 
 from aegis.guard import check_code
 from aegis.pipeline import HashChainLog, env_audit_key
+from aegis.redact import redact
 
 PROTOCOL_VERSION = "2024-11-05"
 
@@ -52,9 +53,9 @@ class AegisMcpServer:
         result = self.sandbox.run(code)
         self.log.append("executed", {"success": result.success,
                                      "exit_code": result.exit_code})
-        text = result.stdout
+        text = redact(result.stdout)
         if result.stderr:
-            text += ("\n" if text else "") + "[stderr] " + result.stderr
+            text += ("\n" if text else "") + "[stderr] " + redact(result.stderr)
         return (text or "(no output)"), not result.success
 
     def _audit_status(self):

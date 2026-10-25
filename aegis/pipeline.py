@@ -10,6 +10,7 @@ import os
 from dataclasses import dataclass, field
 
 from aegis.guard import check_code
+from aegis.redact import redact
 
 GENESIS = "0" * 64
 
@@ -120,8 +121,8 @@ class SecureCodeRunner:
                     "attempt": attempt,
                 })
                 status = "executed" if result.success else "failed"
-                return RunReport(task, status, code, result.stdout,
-                                 result.stderr, attempts=attempt)
+                return RunReport(task, status, code, redact(result.stdout),
+                                 redact(result.stderr), attempts=attempt)
 
             self.log.append("blocked", {
                 "reasons": list(verdict.reasons), "attempt": attempt,

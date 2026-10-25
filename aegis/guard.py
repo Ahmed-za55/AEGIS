@@ -32,6 +32,10 @@ FORBIDDEN_ATTRS = frozenset({
     "get_field", "get_value", "Formatter",
     # hidden eval: typing evaluates string annotations
     "get_type_hints", "ForwardRef", "singledispatch", "singledispatchmethod",
+    # frame/code introspection (gen.gi_frame.f_builtins["open"] reaches builtins)
+    "gi_frame", "cr_frame", "ag_frame", "gi_code", "cr_code", "ag_code",
+    "f_globals", "f_builtins", "f_locals", "f_back", "f_code", "f_trace",
+    "tb_frame", "tb_next", "with_traceback", "func_code",
 })
 
 _FORMAT_DUNDER = re.compile(r"\{[^{}]*__")

@@ -11,7 +11,8 @@
 | module-attr | 6/6 |
 | format | 2/2 |
 | hidden-eval | 4/4 |
-| **Total** | **38/38** |
+| frame | 4/4 |
+| **Total** | **42/42** |
 
 Benign programs allowed: **14/14**
 

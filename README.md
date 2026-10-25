@@ -72,7 +72,7 @@ After tampering  : False
 
 ## Red-team benchmark
 
-42 attack snippets and 14 benign programs (`scripts/benchmark.py`, results in
+46 attack snippets and 14 benign programs (`scripts/benchmark.py`, results in
 `docs/benchmark.md`). Static analysis only; no attack code is executed.
 
 | Category | Blocked |
@@ -86,6 +86,7 @@ After tampering  : False
 | module-attr | 6/6 |
 | format | 2/2 |
 | hidden-eval | 4/4 |
+| frame | 4/4 |
 
 Benign programs allowed: 14/14. Four resource attacks (infinite loop, memory
 bomb, huge output, deep recursion) pass the guard by design; see limits below.
@@ -116,7 +117,7 @@ and non-literal `str.format`. All of them are in the benchmark.
 ## Security model and limits (please read)
 
 - The guard is a **policy layer, not an isolation boundary**. The corpus was
-  written by the same author as the guard, so 38/38 is not proof of safety.
+  written by the same author as the guard, so 42/42 is not proof of safety.
 - Code that passes the guard currently runs in a local subprocess with a
   temporary working directory, a timeout and output limits, **without
   OS-level isolation**.
