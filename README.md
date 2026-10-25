@@ -72,7 +72,7 @@ After tampering  : False
 
 ## Red-team benchmark
 
-26 attack snippets and 10 benign programs (`scripts/benchmark.py`, results in
+38 attack snippets and 14 benign programs (`scripts/benchmark.py`, results in
 `docs/benchmark.md`). Static analysis only; no attack code is executed.
 
 | Category | Blocked |
@@ -82,18 +82,29 @@ After tampering  : False
 | process | 4/4 |
 | secrets | 2/2 |
 | bypass | 8/8 |
+| alias | 4/4 |
+| module-attr | 6/6 |
+| format | 2/2 |
 
-Benign programs allowed: 10/10. Four resource attacks (infinite loop, memory
+Benign programs allowed: 14/14. Four resource attacks (infinite loop, memory
 bomb, huge output, deep recursion) pass the guard by design; see limits below.
 
 The benchmark found a real gap during development: attribute access through
 format strings (`'{0.__class__}'.format(1)`) was not caught by the AST check.
 It is now blocked and covered by a regression test.
 
+A second, adversarial review of the guard found a dozen more bypasses that
+really executed file writes and shell commands: aliasing blocked builtins
+(`f = open; f(...)`), reaching `os`/`sys` through allowed modules
+(`random._os`, `typing.sys`, `json.codecs`), and format strings assembled
+by concatenation. The guard now blocks references (not only calls) to
+dangerous builtins, private and module-leaking attributes, dotted imports
+and non-literal `str.format`. All of them are in the benchmark.
+
 ## Security model and limits (please read)
 
 - The guard is a **policy layer, not an isolation boundary**. The corpus was
-  written by the same author as the guard, so 22/22 is not proof of safety.
+  written by the same author as the guard, so 34/34 is not proof of safety.
 - Code that passes the guard currently runs in a local subprocess with a
   temporary working directory, a timeout and output limits, **without
   OS-level isolation**.

@@ -7,9 +7,12 @@
 | process | 4/4 |
 | secrets | 2/2 |
 | bypass | 8/8 |
-| **Total** | **22/22** |
+| alias | 4/4 |
+| module-attr | 6/6 |
+| format | 2/2 |
+| **Total** | **34/34** |
 
-Benign programs allowed: **10/10**
+Benign programs allowed: **14/14**
 
 Resource attacks pass the guard by design and must be contained by runtime limits (timeout, output cap, container memory): infinite loop, memory bomb, huge output, deep recursion
 
