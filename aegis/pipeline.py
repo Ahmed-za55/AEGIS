@@ -4,7 +4,9 @@ With max_attempts > 1 the guard's rejection reasons are fed back to the LLM,
 which gets another chance to write a compliant program.
 """
 import hashlib
+import hmac
 import json
+import os
 from dataclasses import dataclass, field
 
 from aegis.guard import check_code
@@ -12,14 +14,25 @@ from aegis.guard import check_code
 GENESIS = "0" * 64
 
 
-class HashChainLog:
-    def __init__(self):
-        self.entries: list[dict] = []
+def env_audit_key() -> bytes | None:
+    """Secret for the HMAC chain, from the AEGIS_AUDIT_KEY variable."""
+    value = os.environ.get("AEGIS_AUDIT_KEY")
+    return value.encode("utf-8") if value else None
 
-    @staticmethod
-    def _digest(body: dict) -> str:
-        raw = json.dumps(body, sort_keys=True, ensure_ascii=False)
-        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+class HashChainLog:
+    """Hash-chained log. With a secret key the chain is an HMAC chain:
+    forging or rewriting history then requires the key."""
+
+    def __init__(self, key: bytes | None = None):
+        self.entries: list[dict] = []
+        self._key = key
+
+    def _digest(self, body: dict) -> str:
+        raw = json.dumps(body, sort_keys=True, ensure_ascii=False).encode("utf-8")
+        if self._key:
+            return hmac.new(self._key, raw, hashlib.sha256).hexdigest()
+        return hashlib.sha256(raw).hexdigest()
 
     def append(self, event: str, data: dict) -> dict:
         prev = self.entries[-1]["hash"] if self.entries else GENESIS
@@ -57,8 +70,8 @@ class HashChainLog:
                 fh.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
 
     @classmethod
-    def load(cls, path):
-        log = cls()
+    def load(cls, path, key: bytes | None = None):
+        log = cls(key=key)
         with open(path, encoding="utf-8") as fh:
             log.entries = [json.loads(line) for line in fh if line.strip()]
         return log
@@ -81,7 +94,7 @@ class SecureCodeRunner:
         if max_attempts < 1:
             raise ValueError("max_attempts must be at least 1.")
         self.llm, self.sandbox, self.guard = llm, sandbox, guard
-        self.log = log if log is not None else HashChainLog()
+        self.log = log if log is not None else HashChainLog(key=env_audit_key())
         self.max_attempts = max_attempts
 
     def _propose(self, task: str, feedback):

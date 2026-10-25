@@ -8,11 +8,11 @@ import pathlib
 import sys
 import tempfile
 
-from aegis.pipeline import HashChainLog
+from aegis.pipeline import HashChainLog, env_audit_key
 
 
 def verify(path, head=None) -> int:
-    log = HashChainLog.load(path)
+    log = HashChainLog.load(path, key=env_audit_key())
     bad = log.first_invalid()
     if bad is not None:
         print(f"TAMPERED: chain breaks at entry {bad}")

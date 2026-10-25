@@ -1,4 +1,5 @@
 ﻿import math
+import os
 import subprocess
 import sys
 import tempfile
@@ -10,6 +11,18 @@ from aegis.runtime.isolation import (
     IsolationBackend,
     IsolationCapabilities,
 )
+
+
+# Only these variables reach untrusted code. API keys and other secrets
+# in the parent environment are NOT inherited.
+_SAFE_ENV_KEYS = frozenset({
+    "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "TEMP", "TMP", "PATH",
+    "PATHEXT", "COMSPEC", "LANG", "LC_ALL",
+})
+
+
+def _clean_env() -> dict:
+    return {k: v for k, v in os.environ.items() if k.upper() in _SAFE_ENV_KEYS}
 
 
 @dataclass(frozen=True)
@@ -184,6 +197,8 @@ class RuntimeSandbox:
                 process = subprocess.run(
                     [
                         sys.executable,
+                        "-I",
+                        "-u",
                         "-X",
                         "utf8",
                         "-c",
@@ -195,6 +210,7 @@ class RuntimeSandbox:
                     errors="replace",
                     timeout=self.timeout,
                     cwd=temp_dir,
+                    env=_clean_env(),
                 )
 
             stdout = process.stdout

@@ -102,6 +102,17 @@ by concatenation. The guard now blocks references (not only calls) to
 dangerous builtins, private and module-leaking attributes, dotted imports
 and non-literal `str.format`. All of them are in the benchmark.
 
+## Integrations and audit integrity
+
+- **MCP server:** `python -m aegis.mcp_server --docker` (or `--unsafe-local`
+  for demos) exposes `execute_python` and `audit_status` over stdio, so any
+  MCP-capable agent can run code through the AEGIS policy and audit log.
+  Tested with scripted JSON-RPC messages; not yet tested with a real MCP client.
+- **Keyed audit chain:** set `AEGIS_AUDIT_KEY` and the log becomes an HMAC
+  chain. A plain hash chain can be forged by anyone who can recompute it (a
+  test documents this); with the key, forgery requires the secret.
+  `scripts/audit_tool.py verify audit.jsonl --head <hash>` checks a saved log.
+
 ## Security model and limits (please read)
 
 - The guard is a **policy layer, not an isolation boundary**. The corpus was
@@ -111,9 +122,12 @@ and non-literal `str.format`. All of them are in the benchmark.
   OS-level isolation**.
 - Resource attacks pass the guard by design. Timeout and output caps cover
   part of that; a hard memory limit needs a container backend.
-- Planned: a Docker `IsolationBackend` (`--network none`, read-only
-  filesystem, dropped capabilities, pids and memory limits) and
-  probe-based verification of declared isolation capabilities.
+- A Docker `IsolationBackend` (`--network none`, read-only filesystem,
+  dropped capabilities, pid and memory limits) is implemented and covered
+  by unit tests. Its end-to-end test only runs where Docker is installed,
+  and it has not yet been run against a real Docker daemon.
+- Declared isolation is checked by probes (`aegis/runtime/verify.py`)
+  before a backend is trusted.
 
 ## Project structure
 
