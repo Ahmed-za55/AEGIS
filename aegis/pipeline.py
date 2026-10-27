@@ -107,7 +107,13 @@ class SecureCodeRunner:
         feedback = None
         report = None
         for attempt in range(1, self.max_attempts + 1):
-            code = self._propose(task, feedback)
+            try:
+                code = self._propose(task, feedback)
+            except Exception as exc:       # LLM down, rate limited, empty answer
+                message = redact(f"{type(exc).__name__}: {exc}")
+                self.log.append("llm_error", {"error": message, "attempt": attempt})
+                return RunReport(task, "error", "", reasons=(message,),
+                                 attempts=attempt)
             self.log.append("proposed", {
                 "task": task, "code": code, "attempt": attempt,
             })

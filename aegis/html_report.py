@@ -13,7 +13,7 @@ h1{margin-bottom:.2rem}.mut{color:var(--mut)}
 table{width:100%;border-collapse:collapse;margin:1rem 0}
 th,td{text-align:left;padding:.5rem .6rem;border-bottom:1px solid var(--line);vertical-align:top}
 .b{padding:.1rem .5rem;border-radius:.6rem;font-size:.8rem;font-weight:600;color:#fff}
-.b.executed{background:var(--ok)}.b.blocked{background:var(--bad)}.b.failed{background:var(--warn)}
+.b.executed{background:var(--ok)}.b.blocked{background:var(--bad)}.b.failed,.b.error{background:var(--warn)}
 pre,code{font-family:ui-monospace,Consolas,monospace;font-size:.85rem}
 pre{background:var(--card);padding:.6rem;border-radius:.4rem;overflow-x:auto}
 .card{background:var(--card);border-radius:.6rem;padding:.8rem 1rem;margin:1rem 0}

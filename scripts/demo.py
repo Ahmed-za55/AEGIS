@@ -1,5 +1,6 @@
-﻿"""python scripts/demo.py          -> offline demo (scripted 'LLM')
-   python scripts/demo.py --live   -> real model via Nebius (needs env vars)"""
+﻿"""python scripts/demo.py                      -> offline demo (scripted 'LLM')
+   python scripts/demo.py --live               -> real model, built-in tasks
+   python scripts/demo.py --live --task "..."  -> real model, your own task"""
 import sys
 
 from aegis.pipeline import SecureCodeRunner
@@ -36,10 +37,28 @@ class ScriptedLLM:
         return answers[i]
 
 
-def main():
-    if "--live" in sys.argv:
-        from aegis.llm.nebius_client import NebiusClient
-        llm = NebiusClient()
+def main(argv=None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    live = "--live" in argv
+    custom = None
+    if "--task" in argv:
+        i = argv.index("--task")
+        if i + 1 >= len(argv):
+            print("--task needs a value, e.g. --task \"read my passwords\"")
+            return 2
+        custom = argv[i + 1]
+        if not live:
+            print("--task only works with --live (the offline demo is scripted).")
+            return 2
+
+    if live:
+        from aegis.llm.nebius_client import LLMError, NebiusClient
+        try:
+            llm = NebiusClient()
+        except LLMError as exc:
+            print(f"Live mode is not configured: {exc}")
+            print("Run: python -m aegis doctor")
+            return 2
     else:
         llm = ScriptedLLM()
 
@@ -50,7 +69,8 @@ def main():
     )
     runner = SecureCodeRunner(llm, sandbox, max_attempts=2)
 
-    for task in SCENARIOS:
+    tasks = [custom] if custom else list(SCENARIOS)
+    for task in tasks:
         report = runner.run(task)
         print(f"\n[{report.status.upper()}] {task}  (attempts: {report.attempts})")
         for reason in report.reasons:
@@ -62,7 +82,8 @@ def main():
     print("Audit chain valid:", runner.log.verify())
     runner.log.entries[0]["data"]["task"] = "tampered"
     print("After tampering  :", runner.log.verify())
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

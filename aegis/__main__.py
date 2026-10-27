@@ -6,6 +6,7 @@
   verify-demo   show a lying isolation backend being caught
   audit-demo    show audit tampering being detected
   mcp           start the MCP server (--docker or --unsafe-local)
+  doctor        check the live LLM setup (key, model, one real call)
 """
 import pathlib
 import runpy
@@ -27,6 +28,9 @@ def main(argv=None) -> int:
         print(__doc__)
         return 0 if argv else 2
     command, rest = argv[0], argv[1:]
+    if command == "doctor":
+        from aegis.doctor import main as doctor_main
+        return doctor_main()
     if command == "mcp":
         from aegis.mcp_server import main as mcp_main
         return mcp_main(rest)
