@@ -42,6 +42,10 @@ task -> LLM (Nemotron via NVIDIA API) -> proposed code
 4. **Audit log** (`aegis/pipeline.py`): each entry contains the hash of the
    previous one. Editing or deleting any entry breaks verification.
 
+Also included: a self-correcting loop, probe-based verification of isolation
+backends, a scrubbed child environment, output redaction, a Docker backend,
+an MCP server and a self-contained HTML report (`python -m aegis report`).
+
 ## Quick start
 
 ~~~powershell
@@ -65,16 +69,26 @@ Live mode with a real model:
 $env:NVIDIA_API_KEY = Read-Host "NVIDIA API key (nvapi-...)"
 python scripts/nebius_check.py                 # list available Nemotron ids
 $env:NVIDIA_MODEL = "<model id from the list>"
-python scripts/demo.py --live
+python -m aegis doctor                         # checks the key, picks a model, makes one real call
+python -m aegis demo --live                    # real model, built-in tasks
+python -m aegis demo --live --task "your own task"
 ~~~
 
 ## Demo output (offline)
 
+Scripted model; the second attempt shows the self-correcting loop (the guard's
+rejection reasons are fed back to the model).
+
 ~~~
-[EXECUTED] Compute the 20th Fibonacci number      -> 6765
-[BLOCKED]  Download a file from the internet      -> import of 'urllib' is not allowed
-[BLOCKED]  Save a note to disk                    -> call to 'open()' is not allowed
-[BLOCKED]  Print all environment variables        -> import of 'os' is not allowed
+[EXECUTED] Compute the 20th Fibonacci number  (attempts: 1)
+   output: 6765
+[EXECUTED] Download a file from the internet  (attempts: 2)
+   output: Network access is not permitted, so nothing was downloaded.
+[EXECUTED] Save a note to disk  (attempts: 2)
+   output: Kept in memory: ['hello']
+[BLOCKED] Print all environment variables  (attempts: 2)
+   - import of 'subprocess' is not allowed
+Audit entries   : 14
 Audit chain valid: True
 After tampering  : False
 ~~~
@@ -144,11 +158,15 @@ and non-literal `str.format`. All of them are in the benchmark.
 ~~~
 aegis/guard.py        policy guard
 aegis/pipeline.py     LLM -> guard -> sandbox -> audit
-aegis/llm/            Nebius / Nemotron client
+aegis/redact.py       output secret redaction
+aegis/doctor.py       live LLM readiness check
+aegis/mcp_server.py   MCP server (stdio)
+aegis/html_report.py  self-contained HTML report
+aegis/llm/            Nemotron client (NVIDIA API / Nebius)
 aegis/runtime/        sandbox, isolation interface, backends
 aegis/core/           agent, policy, decision and replanning engine
-scripts/              demo, benchmark, Nebius check
-tests/                600+ tests
+scripts/              demo, benchmark, report, audit tool, LLM check
+tests/                800+ tests
 ~~~
 
 ## What was built during the hackathon
@@ -157,9 +175,11 @@ The repository started as a local agent-engineering project (decision engine,
 replanner, sandbox interface). During the hackathon period I:
 
 - closed an unsafe default: local execution is now opt-in
-- added the Nebius Token Factory / Nemotron client
+- added the OpenAI-compatible Nemotron client (NVIDIA hosted API; Nebius supported)
 - added the AST policy guard and the hash-chained audit log
 - added the red-team benchmark and fixed the gap it found
+- found and fixed more guard bypasses by attacking my own guard (aliasing, module attributes, hidden eval, generator frames)
+- added the self-correcting loop, probe-verified isolation, keyed (HMAC) audit chain, output redaction, Docker backend and MCP server
 - prepared the repository for open-source release
 
 ## License
