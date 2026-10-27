@@ -1,6 +1,6 @@
 ﻿"""`python -m aegis doctor`: check that the live LLM path works end to end.
 
-Never prints the API key. Picks a Nemotron model automatically if none is set.
+Never prints the API key. Picks a Nemotron model automatically when possible.
 """
 import os
 import time
@@ -26,6 +26,11 @@ def pick_model(ids):
     return None
 
 
+def _installed(model, ids):
+    """Ollama lists 'name:tag'; accept the bare name too."""
+    return model in ids or any(i.split(":")[0] == model for i in ids)
+
+
 def run_doctor(env=None, openai_factory=None, client_factory=None, out=print) -> int:
     env = dict(os.environ) if env is None else dict(env)
     try:
@@ -38,28 +43,38 @@ def run_doctor(env=None, openai_factory=None, client_factory=None, out=print) ->
     out(f"endpoint : {url}")
     out(f"api key  : {'set' if key else 'MISSING'}")
     if not key:
-        out("-> set NVIDIA_API_KEY (or NEBIUS_API_KEY) in this terminal first.")
+        out("-> set NVIDIA_API_KEY (or NEBIUS_API_KEY), or use a local model: "
+            "LLM_PROVIDER=ollama")
         return 2
 
     if openai_factory is None:
         from openai import OpenAI as openai_factory
-    ids = []
+    ids, listed = [], False
     try:
         api = openai_factory(api_key=key, base_url=url)
         ids = [m.id for m in api.models.list()]
+        listed = True
         out(f"models   : {len(ids)} available")
     except Exception as exc:
         out(f"models   : could not list ({type(exc).__name__}); continuing")
+        if provider == "ollama":
+            out("-> is Ollama running? Start it, then: ollama pull nemotron-mini")
 
     if not model:
         model = pick_model(ids)
+        if not model and provider == "custom" and ids:
+            model = ids[0]
         if not model:
-            out("-> no Nemotron model found; set NVIDIA_MODEL manually.")
+            out("-> no Nemotron model found; set the model id manually.")
             return 2
-        out(f"model    : {model}  (auto-selected; set NVIDIA_MODEL to keep it)")
+        out(f"model    : {model}  (auto-selected)")
     else:
-        note = "" if not ids or model in ids else "  (WARNING: not in the model list)"
-        out(f"model    : {model}{note}")
+        warn = ""
+        if listed and ids and not _installed(model, ids):
+            warn = "  (WARNING: not in the model list)"
+            if provider == "ollama":
+                warn += f" -> run: ollama pull {model}"
+        out(f"model    : {model}{warn}")
 
     make = client_factory or NebiusClient
     try:
@@ -78,7 +93,7 @@ def run_doctor(env=None, openai_factory=None, client_factory=None, out=print) ->
         out("guard    : allowed")
     else:
         out("guard    : blocked: " + "; ".join(verdict.reasons))
-    out(f"\nREADY. Next: set NVIDIA_MODEL={model} and run: python -m aegis demo --live")
+    out("\nREADY. Next: python -m aegis demo --live")
     return 0
 
 

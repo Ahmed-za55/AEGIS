@@ -1,14 +1,18 @@
-﻿"""OpenAI-compatible LLM client for NVIDIA's hosted API and Nebius Token Factory.
+﻿"""OpenAI-compatible LLM client: NVIDIA hosted API, Nebius, local Ollama, or any
+other OpenAI-compatible endpoint.
 
-Nemotron models are reasoning models, so we do NOT use native tool calling.
-The agent asks for a Python code block, strips <think> output and extracts the
-code; AEGIS validates and executes it inside the sandbox.
+Nemotron models are often reasoning models, so we do NOT use native tool
+calling. The agent asks for a Python code block, strips <think> output and
+extracts the code; AEGIS validates and executes it inside the sandbox.
 
 Provider selection (environment):
-  LLM_PROVIDER=nvidia|nebius   explicit choice
+  LLM_PROVIDER=nvidia|nebius|ollama|custom   explicit choice
   otherwise: nvidia if only NVIDIA_API_KEY is set, else nebius
-  NVIDIA: NVIDIA_API_KEY, NVIDIA_MODEL, optional NVIDIA_BASE_URL
-  Nebius: NEBIUS_API_KEY, NEBIUS_MODEL, optional NEBIUS_BASE_URL
+  nvidia : NVIDIA_API_KEY, NVIDIA_MODEL, optional NVIDIA_BASE_URL
+  nebius : NEBIUS_API_KEY, NEBIUS_MODEL, optional NEBIUS_BASE_URL
+  ollama : local, no key. OLLAMA_MODEL (default nemotron-mini), OLLAMA_BASE_URL
+  custom : LLM_BASE_URL, LLM_API_KEY, LLM_MODEL
+  LLM_TIMEOUT overrides the request timeout in seconds.
 """
 import os
 import re
@@ -16,6 +20,8 @@ import time
 
 BASE_URL = "https://api.tokenfactory.nebius.com/v1/"          # Nebius
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"       # NVIDIA hosted API
+OLLAMA_BASE_URL = "http://localhost:11434/v1"                 # local Ollama
+OLLAMA_DEFAULT_MODEL = "nemotron-mini"                        # NVIDIA Nemotron-Mini-4B
 
 _THINK = re.compile(r"<think>.*?</think>", re.S)
 _FENCE = re.compile(r"```(?:python)?[ \t]*\n(.*?)```", re.S)
@@ -50,26 +56,41 @@ def resolve_settings(environ=None, model=None, api_key=None, base_url=None):
         url = base_url or env.get("NEBIUS_BASE_URL") or BASE_URL
         key = api_key or env.get("NEBIUS_API_KEY")
         mdl = model or env.get("NEBIUS_MODEL") or env.get("LLM_MODEL")
+    elif provider == "ollama":
+        url = base_url or env.get("OLLAMA_BASE_URL") or OLLAMA_BASE_URL
+        key = api_key or env.get("OLLAMA_API_KEY") or "ollama"   # Ollama ignores it
+        mdl = (model or env.get("OLLAMA_MODEL") or env.get("LLM_MODEL")
+               or OLLAMA_DEFAULT_MODEL)
+    elif provider == "custom":
+        url = base_url or env.get("LLM_BASE_URL")
+        if not url:
+            raise LLMError("Set LLM_BASE_URL for LLM_PROVIDER=custom.")
+        key = api_key or env.get("LLM_API_KEY") or "none"
+        mdl = model or env.get("LLM_MODEL")
     else:
-        raise LLMError(f"Unknown LLM_PROVIDER '{provider}' (use nvidia or nebius).")
+        raise LLMError(
+            f"Unknown LLM_PROVIDER '{provider}' (use nvidia, nebius, ollama or custom).")
     return provider, url, key, mdl
 
 
 class NebiusClient:
-    """Name kept for compatibility; works with either provider."""
+    """Name kept for compatibility; works with every provider above."""
 
     def __init__(self, model=None, api_key=None, base_url=None,
-                 timeout: float = 60.0, client=None, max_retries: int = 3,
+                 timeout=None, client=None, max_retries: int = 3,
                  sleep=time.sleep):
         provider, url, key, mdl = resolve_settings(
             model=model, api_key=api_key, base_url=base_url)
         self.provider, self.model = provider, mdl
         if not self.model:
-            raise LLMError("Set the model id (NVIDIA_MODEL or NEBIUS_MODEL).")
+            raise LLMError("Set the model id (NVIDIA_MODEL, NEBIUS_MODEL or LLM_MODEL).")
 
         if client is None:
             if not key:
                 raise LLMError("Set NVIDIA_API_KEY (or NEBIUS_API_KEY).")
+            if timeout is None:
+                default = 300.0 if provider == "ollama" else 60.0
+                timeout = float(os.environ.get("LLM_TIMEOUT") or default)
             from openai import OpenAI  # imported lazily
 
             client = OpenAI(api_key=key, base_url=url, timeout=timeout)
@@ -92,6 +113,8 @@ class NebiusClient:
 
     def chat(self, messages: list[dict], temperature: float = 0.2,
              max_tokens: int = 4096) -> str:
+        if self.provider == "ollama":      # small local models, 4k context
+            max_tokens = min(max_tokens, 1024)
         resp = self._create(model=self.model, messages=messages,
                             temperature=temperature, max_tokens=max_tokens)
         content = resp.choices[0].message.content

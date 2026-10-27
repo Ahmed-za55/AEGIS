@@ -1,6 +1,7 @@
 ﻿"""python scripts/demo.py                      -> offline demo (scripted 'LLM')
    python scripts/demo.py --live               -> real model, built-in tasks
-   python scripts/demo.py --live --task "..."  -> real model, your own task"""
+   python scripts/demo.py --live --task "..."  -> real model, your own task
+   add --show-code to print every attempt's code and the guard's verdict"""
 import sys
 
 from aegis.pipeline import SecureCodeRunner
@@ -37,9 +38,38 @@ class ScriptedLLM:
         return answers[i]
 
 
+def _print_code(code, limit=14):
+    lines = code.splitlines() or [""]
+    for ln in lines[:limit]:
+        print(f"       | {ln}")
+    if len(lines) > limit:
+        print(f"       | ... ({len(lines) - limit} more lines)")
+
+
+def print_trace(entries):
+    """Show each attempt: the code the model wrote and what AEGIS decided."""
+    current = None
+    for entry in entries:
+        data = entry["data"]
+        if entry["event"] == "proposed":
+            current = data
+        elif entry["event"] == "blocked":
+            print(f"   attempt {data['attempt']} -> BLOCKED")
+            _print_code(current["code"])
+            for reason in data["reasons"]:
+                print(f"       ! {reason}")
+        elif entry["event"] == "executed":
+            verdict = "EXECUTED" if data["success"] else "FAILED"
+            print(f"   attempt {data['attempt']} -> {verdict}")
+            _print_code(current["code"])
+        elif entry["event"] == "llm_error":
+            print(f"   attempt {data['attempt']} -> MODEL ERROR: {data['error']}")
+
+
 def main(argv=None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     live = "--live" in argv
+    show_code = "--show-code" in argv
     custom = None
     if "--task" in argv:
         i = argv.index("--task")
@@ -71,10 +101,14 @@ def main(argv=None) -> int:
 
     tasks = [custom] if custom else list(SCENARIOS)
     for task in tasks:
+        start = len(runner.log.entries)
         report = runner.run(task)
         print(f"\n[{report.status.upper()}] {task}  (attempts: {report.attempts})")
-        for reason in report.reasons:
-            print(f"   - {reason}")
+        if show_code:
+            print_trace(runner.log.entries[start:])
+        elif report.reasons:
+            for reason in report.reasons:
+                print(f"   - {reason}")
         if report.stdout:
             print(f"   output: {report.stdout.strip()[:200]}")
 
