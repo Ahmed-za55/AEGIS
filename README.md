@@ -5,12 +5,16 @@ AEGIS decides whether it may run, runs it with enforced limits, and records
 every decision in a tamper-evident audit log.
 
 **Track:** Coding & Agentic Engineering
-**Model:** NVIDIA Nemotron, served by Nebius Token Factory
+**Model:** NVIDIA Nemotron through NVIDIA's hosted API (build.nvidia.com).
+The client is OpenAI-compatible and also supports Nebius Token Factory
+(`LLM_PROVIDER=nebius`). I could not onboard to Nebius because its billing
+does not accept payment cards from my country, so the live demo runs on
+NVIDIA's API instead.
 
 ## How it works
 
 ~~~
-task -> LLM (Nemotron on Nebius) -> proposed code
+task -> LLM (Nemotron via NVIDIA API) -> proposed code
                                         |
                                  policy guard (AST)
                                   /            \
@@ -22,7 +26,8 @@ task -> LLM (Nemotron on Nebius) -> proposed code
 ~~~
 
 1. **LLM client** (`aegis/llm/nebius_client.py`): OpenAI-compatible client for
-   Nebius Token Factory. Nemotron models there are reasoning models, so AEGIS
+   NVIDIA's hosted API (default) or Nebius Token Factory. Nemotron models
+   are reasoning models, so AEGIS
    does not rely on native tool calling. It asks for a Python code block,
    strips `<think>` output and extracts the code.
 2. **Policy guard** (`aegis/guard.py`): static analysis with Python's `ast`.
@@ -57,9 +62,9 @@ python -m aegis mcp --unsafe-local   # MCP server (demo mode)
 Live mode with a real model:
 
 ~~~powershell
-$env:NEBIUS_API_KEY = Read-Host "Nebius API key"
+$env:NVIDIA_API_KEY = Read-Host "NVIDIA API key (nvapi-...)"
 python scripts/nebius_check.py                 # list available Nemotron ids
-$env:NEBIUS_MODEL = "<model id from the list>"
+$env:NVIDIA_MODEL = "<model id from the list>"
 python scripts/demo.py --live
 ~~~
 

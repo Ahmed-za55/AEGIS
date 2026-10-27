@@ -1,16 +1,23 @@
 ﻿"""python scripts/nebius_check.py            -> list Nemotron model ids
-   python scripts/nebius_check.py "prompt"   -> send a prompt to NEBIUS_MODEL"""
-import os
+   python scripts/nebius_check.py "prompt"   -> send a prompt to the model
+
+Works with NVIDIA's hosted API (NVIDIA_API_KEY) or Nebius (NEBIUS_API_KEY)."""
 import sys
 
-from openai import OpenAI
-
-from aegis.llm.nebius_client import BASE_URL, NebiusClient
+from aegis.llm.nebius_client import NebiusClient, resolve_settings
 
 if len(sys.argv) == 1:
-    client = OpenAI(api_key=os.environ["NEBIUS_API_KEY"], base_url=BASE_URL)
+    from openai import OpenAI
+
+    provider, url, key, _ = resolve_settings()
+    if not key:
+        sys.exit("Set NVIDIA_API_KEY (or NEBIUS_API_KEY) first.")
+    print(f"provider: {provider}")
+    client = OpenAI(api_key=key, base_url=url)
     for m in client.models.list():
         if "nemotron" in m.id.lower():
             print(m.id)
 else:
-    print(NebiusClient().chat([{"role": "user", "content": sys.argv[1]}]))
+    client = NebiusClient()
+    print(f"[{client.provider} / {client.model}]")
+    print(client.chat([{"role": "user", "content": sys.argv[1]}]))
