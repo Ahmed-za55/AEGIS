@@ -7,7 +7,7 @@ import html
 
 _CSS = """
 :root{--bg:#fff;--fg:#1a1a1a;--mut:#666;--card:#f5f5f7;--line:#ddd;--ok:#1a7f37;--bad:#cf222e;--warn:#9a6700}
-@media (prefers-color-scheme:dark){:root{--bg:#111318;--fg:#e8e8ea;--mut:#9a9aa3;--card:#1b1e26;--line:#2d313c;--ok:#3fb950;--bad:#f85149;--warn:#d29922}}
+@media (prefers-color-scheme:dark){:root{--bg:#111318;--fg:#e8e8ea;--mut:#9a9aa3;--card:#1b1e26;--line:#2d313c;--ok:#3fb950;--bad:#f85149;--warn:#d29922}:root .b{color:#0b0d12}}
 body{font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--fg);max-width:980px;margin:2rem auto;padding:0 1rem}
 h1{margin-bottom:.2rem}.mut{color:var(--mut)}
 table{width:100%;border-collapse:collapse;margin:1rem 0}

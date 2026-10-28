@@ -30,13 +30,13 @@ PAGE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>AEGIS Playground</title>
 <style>
 :root{--bg:#fff;--fg:#1a1a1a;--mut:#666;--card:#f5f5f7;--line:#ddd;--ok:#1a7f37;--bad:#cf222e;--warn:#9a6700;--acc:#3b5bdb}
-@media (prefers-color-scheme:dark){:root{--bg:#111318;--fg:#e8e8ea;--mut:#9a9aa3;--card:#1b1e26;--line:#2d313c;--ok:#3fb950;--bad:#f85149;--warn:#d29922;--acc:#748ffc}}
+@media (prefers-color-scheme:dark){:root{--bg:#111318;--fg:#e8e8ea;--mut:#9a9aa3;--card:#1b1e26;--line:#2d313c;--ok:#3fb950;--bad:#f85149;--warn:#d29922;--acc:#748ffc}:root .b{color:#0b0d12}}
 *{box-sizing:border-box}body{font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--fg);max-width:1000px;margin:0 auto;padding:1rem}
 h1{margin:.2rem 0}h2{margin:0 0 .5rem;font-size:1.05rem}.mut{color:var(--mut)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:.6rem;padding:1rem;margin:1rem 0}
 textarea,input{width:100%;font:13px ui-monospace,Consolas,monospace;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:.4rem;padding:.5rem}
 textarea{height:9rem}button{font:inherit;padding:.4rem .8rem;border:1px solid var(--line);border-radius:.4rem;background:var(--bg);color:var(--fg);cursor:pointer;margin:.3rem .3rem 0 0}
-button.p{background:var(--acc);color:#fff;border-color:var(--acc)}
+button.p{background:#3b5bdb;color:#fff;border-color:#3b5bdb}
 .b{display:inline-block;padding:.05rem .5rem;border-radius:.6rem;font-size:.8rem;font-weight:600;color:#fff}
 .EXECUTED,.ALLOWED,.VALID{background:var(--ok)}.BLOCKED,.BROKEN{background:var(--bad)}.FAILED,.ERROR{background:var(--warn)}
 pre{background:var(--bg);border:1px solid var(--line);padding:.5rem;border-radius:.4rem;overflow-x:auto;font-size:12.5px;margin:.3rem 0}
