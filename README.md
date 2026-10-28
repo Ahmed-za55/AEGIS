@@ -61,6 +61,7 @@ pytest -q                       # full test suite
 python -m aegis demo            # offline demo with a scripted "LLM"
 python -m aegis bench           # red-team benchmark
 python -m aegis report          # writes docs/report.html
+python -m aegis ui --unsafe-local   # local web UI (AEGIS Playground)
 python -m aegis audit-demo      # audit tampering is detected
 python -m aegis verify-demo     # a lying isolation backend is caught
 python -m aegis mcp --unsafe-local   # MCP server (demo mode)
