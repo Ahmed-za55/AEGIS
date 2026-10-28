@@ -137,10 +137,12 @@ class NebiusClient:
 
             content = (
                 f"{task}\n\nYour previous code was rejected by the security "
-                f"policy: {'; '.join(feedback)}. Rewrite it using only these "
-                f"modules: {', '.join(sorted(ALLOWED_IMPORTS))}, with no file, "
-                "network or process access. If the task cannot be done safely, "
-                "print a short explanation instead."
+                f"policy: {'; '.join(feedback)}. Rewrite it so it still solves "
+                "the task, using only built-in functions and, if really needed, "
+                f"these standard modules: {', '.join(sorted(ALLOWED_IMPORTS))}. "
+                "Import a module only if you use it. Do not use files, network, "
+                "processes or environment variables. If the task cannot be done "
+                "safely, print a one-line explanation instead."
             )
         answer = self.chat(
             [
