@@ -1,4 +1,4 @@
-﻿"""python scripts/nebius_check.py            -> list Nemotron model ids
+"""python scripts/nebius_check.py            -> list Nemotron model ids
    python scripts/nebius_check.py "prompt"   -> send a prompt to the model
 
 Works with NVIDIA's hosted API (NVIDIA_API_KEY) or Nebius (NEBIUS_API_KEY)."""

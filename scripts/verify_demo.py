@@ -1,4 +1,4 @@
-﻿"""Shows declared vs. verified isolation for a backend that lies."""
+"""Shows declared vs. verified isolation for a backend that lies."""
 import subprocess
 import sys
 

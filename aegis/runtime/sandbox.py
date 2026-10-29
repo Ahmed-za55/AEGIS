@@ -1,4 +1,4 @@
-﻿import math
+import math
 import os
 import subprocess
 import sys

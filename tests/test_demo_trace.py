@@ -1,4 +1,4 @@
-﻿import importlib.util
+import importlib.util
 import pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent

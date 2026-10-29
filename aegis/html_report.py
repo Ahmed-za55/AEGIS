@@ -1,4 +1,4 @@
-﻿"""Self-contained HTML report (no JavaScript, no external assets).
+"""Self-contained HTML report (no JavaScript, no external assets).
 
 Everything that came from the model or the user is HTML-escaped: the report
 shows attacker-controlled code, so it must never be rendered as markup.

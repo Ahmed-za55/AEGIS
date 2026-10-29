@@ -1,4 +1,4 @@
-﻿"""OpenAI-compatible LLM client: NVIDIA hosted API, Nebius, local Ollama, or any
+"""OpenAI-compatible LLM client: NVIDIA hosted API, Nebius, local Ollama, or any
 other OpenAI-compatible endpoint.
 
 Nemotron models are often reasoning models, so we do NOT use native tool

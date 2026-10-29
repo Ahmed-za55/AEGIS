@@ -1,4 +1,4 @@
-﻿"""Red-team benchmark for the AEGIS policy guard (static: nothing is executed).
+"""Red-team benchmark for the AEGIS policy guard (static: nothing is executed).
 
 python scripts/benchmark.py            -> prints a markdown report
 python scripts/benchmark.py > docs/benchmark.md

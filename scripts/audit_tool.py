@@ -1,4 +1,4 @@
-﻿"""Audit-log tool.
+"""Audit-log tool.
 
 python scripts/audit_tool.py verify audit.jsonl [--head <hash>]
 python scripts/audit_tool.py demo

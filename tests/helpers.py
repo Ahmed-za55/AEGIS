@@ -1,4 +1,4 @@
-﻿from aegis.runtime.sandbox import RuntimeSandbox, SandboxSecurityPolicy
+from aegis.runtime.sandbox import RuntimeSandbox, SandboxSecurityPolicy
 
 
 def unsafe_sandbox(**kwargs):

@@ -1,4 +1,4 @@
-﻿"""Metamorphic test: wrapping a blocked program in any control structure must
+"""Metamorphic test: wrapping a blocked program in any control structure must
 not make the guard let it through."""
 import ast
 import textwrap

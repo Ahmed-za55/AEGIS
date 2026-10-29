@@ -1,4 +1,4 @@
-﻿from aegis.__main__ import main
+from aegis.__main__ import main
 from aegis.pipeline import HashChainLog, RunReport
 from aegis.html_report import render_html
 

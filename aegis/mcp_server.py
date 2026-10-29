@@ -1,4 +1,4 @@
-﻿"""AEGIS as a Model Context Protocol (MCP) server over stdio.
+"""AEGIS as a Model Context Protocol (MCP) server over stdio.
 
 Any MCP-capable agent can call `execute_python`; the code goes through the
 AEGIS policy guard, a sandbox and the tamper-evident audit log.

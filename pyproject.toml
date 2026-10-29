@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aegis-guard"
+version = "0.1.0"
+description = "A verified safety layer between LLM agents and code execution: AST policy guard, probe-verified isolation, keyed audit log, MCP server."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Ahmed Sameh Sharaf" }]
+keywords = ["llm", "agents", "security", "sandbox", "guardrails", "mcp", "audit"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Security",
+    "Intended Audience :: Developers",
+]
+dependencies = []
+
+[project.optional-dependencies]
+llm = ["openai>=1.0"]
+dev = ["pytest>=8.0", "ruff>=0.5", "openai>=1.0"]
+
+[project.scripts]
+aegis = "aegis.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["aegis*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+# Correctness rules only: syntax errors, undefined names, shadowed definitions.
+select = ["E9", "F63", "F7", "F82", "F811"]

@@ -1,4 +1,4 @@
-﻿"""Static policy gate for LLM-generated Python code.
+"""Static policy gate for LLM-generated Python code.
 
 This is a policy layer, NOT an isolation boundary. Real isolation comes from
 an IsolationBackend (e.g. Docker); the guard decides what may reach it.

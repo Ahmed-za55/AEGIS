@@ -1,0 +1,8 @@
+
+[dev]
+pytest>=8.0
+ruff>=0.5
+openai>=1.0
+
+[llm]
+openai>=1.0

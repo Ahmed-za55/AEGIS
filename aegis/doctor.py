@@ -1,4 +1,4 @@
-﻿"""`python -m aegis doctor`: check that the live LLM path works end to end.
+"""`python -m aegis doctor`: check that the live LLM path works end to end.
 
 Never prints the API key. Picks a Nemotron model automatically when possible.
 """

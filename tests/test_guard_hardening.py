@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 
 from aegis.guard import check_code
 

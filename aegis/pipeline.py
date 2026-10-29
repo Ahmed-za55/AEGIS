@@ -1,4 +1,4 @@
-﻿"""LLM proposes code -> guard checks -> sandbox runs -> tamper-evident log.
+"""LLM proposes code -> guard checks -> sandbox runs -> tamper-evident log.
 
 With max_attempts > 1 the guard's rejection reasons are fed back to the LLM,
 which gets another chance to write a compliant program.

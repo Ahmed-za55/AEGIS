@@ -1,4 +1,4 @@
-﻿"""Redacts secrets from program output before it goes back to the LLM."""
+"""Redacts secrets from program output before it goes back to the LLM."""
 import os
 import re
 

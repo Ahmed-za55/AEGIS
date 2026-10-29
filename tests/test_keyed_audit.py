@@ -1,4 +1,4 @@
-﻿from aegis.pipeline import HashChainLog
+from aegis.pipeline import HashChainLog
 
 
 def _forge(original, key=None):

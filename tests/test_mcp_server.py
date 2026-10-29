@@ -1,4 +1,4 @@
-﻿import io
+import io
 import json
 
 from aegis.mcp_server import AegisMcpServer, main, serve

@@ -1,4 +1,4 @@
-﻿"""Verified capabilities: don't trust declared isolation, prove it.
+"""Verified capabilities: don't trust declared isolation, prove it.
 
 For every capability a backend DECLARES, run a harmless probe through the
 backend's own run(). If the probe shows the program can still reach the

@@ -1,4 +1,4 @@
-﻿from aegis.llm.nebius_client import NebiusClient
+from aegis.llm.nebius_client import NebiusClient
 
 
 class _Fake:

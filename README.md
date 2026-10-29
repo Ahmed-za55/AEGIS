@@ -1,4 +1,4 @@
-﻿# AEGIS: a safety layer for LLM-written code
+# AEGIS: a safety layer for LLM-written code
 
 AEGIS sits between an LLM agent and code execution. The model proposes Python,
 AEGIS decides whether it may run, runs it with enforced limits, and records

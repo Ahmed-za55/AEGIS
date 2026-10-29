@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 
 from aegis.llm.nebius_client import NebiusClient
 from aegis.pipeline import SecureCodeRunner

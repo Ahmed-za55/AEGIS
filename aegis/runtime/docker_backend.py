@@ -1,4 +1,4 @@
-﻿"""Docker isolation backend.
+"""Docker isolation backend.
 
 Runs untrusted Python in a throw-away container: no network, read-only root
 filesystem, no capabilities, memory/CPU/pid limits, unprivileged user.

@@ -1,4 +1,4 @@
-﻿from aegis.pipeline import SecureCodeRunner
+from aegis.pipeline import SecureCodeRunner
 from aegis.redact import redact
 
 

@@ -1,4 +1,4 @@
-﻿"""python -m aegis <command>
+"""python -m aegis <command>
 
   demo          run the scripted end-to-end demo (add --live for a real model)
   bench         run the red-team benchmark

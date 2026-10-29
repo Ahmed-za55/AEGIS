@@ -1,4 +1,4 @@
-﻿import importlib.util
+import importlib.util
 import pathlib
 
 from aegis.doctor import pick_model, run_doctor

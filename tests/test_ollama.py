@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 
 from aegis.doctor import run_doctor
 from aegis.llm.nebius_client import (

@@ -1,4 +1,4 @@
-﻿"""python scripts/report.py -> docs/report.html (self-contained)"""
+"""python scripts/report.py -> docs/report.html (self-contained)"""
 import importlib.util
 import pathlib
 

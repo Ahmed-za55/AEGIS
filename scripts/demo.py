@@ -1,4 +1,4 @@
-﻿"""python scripts/demo.py                      -> offline demo (scripted 'LLM')
+"""python scripts/demo.py                      -> offline demo (scripted 'LLM')
    python scripts/demo.py --live               -> real model, built-in tasks
    python scripts/demo.py --live --task "..."  -> real model, your own task
    add --show-code to print every attempt's code and the guard's verdict"""

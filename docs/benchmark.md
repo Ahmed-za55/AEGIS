@@ -1,4 +1,4 @@
-﻿# AEGIS policy-guard benchmark
+# AEGIS policy-guard benchmark
 
 | Category | Blocked |
 |---|---|

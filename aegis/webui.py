@@ -1,4 +1,4 @@
-﻿"""AEGIS Playground: a local web UI (standard library only).
+"""AEGIS Playground: a local web UI (standard library only).
 
     python -m aegis ui --unsafe-local     # local runner, no isolation (demo)
     python -m aegis ui --docker           # Docker backend verified by probes
