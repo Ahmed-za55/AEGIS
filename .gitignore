@@ -32,3 +32,7 @@ tempCodeRunnerFile.py
 # Generated test artifact
 aegis_forbidden_test.txt
 ```
+
+*.egg-info/
+build/
+dist/

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from .trace import ExecutionTrace
 from uuid import uuid4
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .trace import ExecutionTrace
@@ -72,7 +72,7 @@ class ExecutionResult:
     status: TaskStatus
     observations: list[Observation]
     trace: "ExecutionTrace | None" = None
-    summary: ExecutionSummary | None = None
+    summary: "ExecutionSummary | None" = None
     
 @dataclass
 class ExecutionSummary:

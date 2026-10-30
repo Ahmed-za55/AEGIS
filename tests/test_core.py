@@ -24,30 +24,20 @@ from aegis.core.models import (
     ExecutionResult,
     ExecutionSummary,
     Observation,
-    Task,
-    TaskStatus,
-    ToolCall,
-    Plan,
-    PlanStep,
 )
 from aegis.core.evaluator import PlanEvaluator, EvaluationResult
 from dataclasses import FrozenInstanceError
 from aegis.runtime.isolation import IsolationBackend, IsolationCapabilities
-from aegis.runtime.isolation import IsolationBackend
 from aegis.runtime.sandbox import RuntimeSandbox
 from aegis.core.summary import create_execution_summary
 from aegis.core.engineering_agent import EngineeringAgent
-from aegis.core.models import Plan, PlanStep, ToolCall
-from aegis.core.registry import ToolRegistry
 from aegis.core.validator import PlanValidator
-from aegis.core.evaluator import PlanEvaluator
 from aegis.core.decision import (
     PlanDecision,
     PlanDecisionEngine,
 )
 import subprocess
 import pytest
-from dataclasses import FrozenInstanceError   
 from aegis.runtime.windows_backend import WindowsIsolationBackend
 from aegis.runtime.backends import NoIsolationBackend
 from aegis.runtime.sandbox import SandboxSecurityPolicy
@@ -56,11 +46,6 @@ from pathlib import Path
 from aegis.core.replanner import Replanner
 from aegis.core.tool import Tool
 from aegis.core.models import (
-    Plan,
-    PlanStep,
-    Task,
-    TaskStatus,
-    ToolCall,
     SandboxResult,
 )
 class TestAgent(Agent):
@@ -359,62 +344,6 @@ def test_audit_logger_clear():
     logger.clear()
 
     assert len(logger.events()) == 0
-def test_engine_creates_audit_event():
-
-    registry = ToolRegistry()
-
-    registry.register(CalculatorTool())
-
-    audit_logger = AuditLogger()
-
-    class CalculatorAgent(Agent):
-
-        def plan(self, task: Task) -> Plan:
-
-            return Plan(
-                task_id=task.id,
-                steps=[
-                    PlanStep(
-                        id="calculate",
-                        description="Calculate",
-                        tool_call=ToolCall(
-                            tool_name="calculator",
-                            arguments={
-                                "operation": "multiply",
-                                "a": 6,
-                                "b": 7,
-                            },
-                        ),
-                    )
-                ],
-            )
-
-    engine = ExecutionEngine(
-        agent=CalculatorAgent(),
-        tool_registry=registry,
-        policy_engine=PolicyEngine(),
-        audit_logger=audit_logger,
-    )
-
-    task = Task(
-        description="Calculate 6 × 7"
-    )
-
-    result = engine.run(task)
-
-    assert result.status == TaskStatus.COMPLETED
-
-    events = audit_logger.events()
-
-    assert len(events) == 1
-
-    event = events[0]
-
-    assert event.task_id == task.id
-    assert event.tool_name == "calculator"
-    assert event.policy_allowed is True
-    assert event.success is True
-    assert event.output == 42   
     
     
 def test_engine_creates_audit_event():
@@ -1500,55 +1429,6 @@ def test_plan_decision_rejects_when_constraints_are_violated():
     assert result.requirement_coverage == 1.0
     assert result.constraint_coverage == 0.0
     
-def test_engine_does_not_execute_tool_when_plan_requires_replan():
-    class ReplanAgent(Agent):
-
-        def plan(self, task: Task) -> Plan:
-            return Plan(
-                task_id=task.id,
-                steps=[
-                    PlanStep(
-                        id="calculate",
-                        description="Perform calculation",
-                        tool_call=ToolCall(
-                            tool_name="calculator",
-                            arguments={
-                                "operation": "add",
-                                "a": 10,
-                                "b": 20,
-                            },
-                        ),
-                    )
-                ],
-                requirements=[
-                    "perform calculation",
-                    "missing requirement",
-                ],
-            )
-
-    registry = ToolRegistry()
-    registry.register(CalculatorTool())
-
-    engine = ExecutionEngine(
-        agent=ReplanAgent(),
-        tool_registry=registry,
-        policy_engine=PolicyEngine(),
-    )
-
-    task = Task(
-        description="Test replanning guard",
-    )
-
-    result = engine.run(task)
-
-    assert result.status == TaskStatus.FAILED
-    assert any(
-        "REPLAN" in observation.error
-        for observation in result.observations
-        if observation.error
-    )
-
-    assert len(engine.audit_logger.events()) == 0
     
 def test_engine_does_not_execute_tool_when_plan_requires_replan():
     class ReplanAgent(Agent):
@@ -1815,41 +1695,9 @@ print(result)
     assert result.stderr == ""
     assert result.exit_code == 0
     
-def test_runtime_sandbox_times_out_long_running_code():
-    sandbox = unsafe_sandbox(timeout=1)
-
-    result = sandbox.run(
-        """
-while True:
-    pass
-"""
-    )
-
-    assert isinstance(result, SandboxResult)
-    assert result.success is False
-    assert result.exit_code != 0
-    assert "timed out" in result.stderr.lower()
     
-def test_runtime_sandbox_rejects_empty_code():
-    sandbox = RuntimeSandbox()
-
-    result = sandbox.run("")
-
-    assert isinstance(result, SandboxResult)
-    assert result.success is False
-    assert result.exit_code != 0
-    assert "code" in result.stderr.lower()
 
 
-def test_runtime_sandbox_rejects_non_string_code():
-    sandbox = RuntimeSandbox()
-
-    result = sandbox.run(None)
-
-    assert isinstance(result, SandboxResult)
-    assert result.success is False
-    assert result.exit_code != 0
-    assert "code" in result.stderr.lower()
     
 def test_runtime_sandbox_isolates_working_directory():
     sandbox = unsafe_sandbox()
@@ -2252,14 +2100,6 @@ def test_runtime_sandbox_exposes_isolation_backend():
     assert sandbox.isolation_backend.is_available() is False
 
 
-def test_runtime_sandbox_accepts_custom_isolation_backend():
-    backend = NoIsolationBackend()
-
-    sandbox = RuntimeSandbox(
-        isolation_backend=backend
-    )
-
-    assert sandbox.isolation_backend is backend
     
 def test_runtime_sandbox_uses_backend_availability_for_strict_mode():
     backend = NoIsolationBackend()
@@ -2367,27 +2207,7 @@ def test_windows_isolation_backend_is_explicitly_unavailable():
 
     assert backend.is_available() is False
     
-def test_no_isolation_backend_reports_no_capabilities():
-    backend = NoIsolationBackend()
-
-    capabilities = backend.capabilities()
-
-    assert capabilities.network_isolation is False
-    assert capabilities.filesystem_isolation is False
-    assert capabilities.process_isolation is False
     
-def test_runtime_sandbox_exposes_isolation_capabilities():
-    backend = NoIsolationBackend()
-
-    sandbox = RuntimeSandbox(
-        isolation_backend=backend,
-    )
-
-    capabilities = sandbox.isolation_capabilities()
-
-    assert capabilities.network_isolation is False
-    assert capabilities.filesystem_isolation is False
-    assert capabilities.process_isolation is False
     
 def test_runtime_sandbox_rejects_when_required_network_isolation_is_unavailable():
     backend = NoIsolationBackend()
@@ -2585,53 +2405,11 @@ def test_windows_isolation_backend_reports_unavailable_capabilities():
     assert capabilities.filesystem_isolation is False
     assert capabilities.process_isolation is False
     
-def test_sandbox_security_policy_is_immutable():
-    policy = SandboxSecurityPolicy(
-        allow_network=False,
-        require_network_isolation=True,
-        require_filesystem_isolation=True,
-        require_process_isolation=True,
-    )
-
-    with pytest.raises(FrozenInstanceError):
-        policy.require_process_isolation = False
-        
-def test_sandbox_security_policy_defaults():
-    policy = SandboxSecurityPolicy()
-
-    assert policy.network_allowed() is False
-    assert policy.requires_network_isolation() is False
-    assert policy.requires_filesystem_isolation() is False
-    assert policy.requires_process_isolation() is False
         
         
-def test_allow_network_does_not_imply_network_isolation():
-    policy = SandboxSecurityPolicy(
-        allow_network=True,
-        require_network_isolation=False,
-    )
-
-    assert policy.network_allowed() is True
-    assert policy.requires_network_isolation() is False 
+        
     
-def test_runtime_sandbox_preserves_custom_security_policy():
-    policy = SandboxSecurityPolicy(
-        allow_network=True,
-        require_network_isolation=True,
-        require_filesystem_isolation=True,
-        require_process_isolation=True,
-    )
-
-    sandbox = RuntimeSandbox(
-        security_policy=policy,
-    )
-
-    assert sandbox.security_policy is policy    
     
-def test_runtime_sandbox_defaults_to_no_isolation_backend():
-    sandbox = RuntimeSandbox()
-
-    assert isinstance(sandbox.isolation_backend, NoIsolationBackend)
     
 def test_runtime_sandbox_uses_custom_backend():
     class CustomBackend(IsolationBackend):
@@ -2661,49 +2439,6 @@ def test_runtime_sandbox_uses_custom_backend():
     
     
     
-def test_runtime_sandbox_passes_timeout_to_isolation_backend():
-    class SpyBackend(IsolationBackend):
-        def __init__(self):
-            self.received_timeout = None
-
-        def is_available(self) -> bool:
-            return True
-
-        def capabilities(self) -> IsolationCapabilities:
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code: str, timeout: float) -> SandboxResult:
-            self.received_timeout = timeout
-
-            return SandboxResult(
-                success=True,
-                stdout="ok",
-                stderr="",
-                exit_code=0,
-            )
-
-    backend = SpyBackend()
-
-    policy = SandboxSecurityPolicy(
-        require_network_isolation=True,
-        require_filesystem_isolation=True,
-        require_process_isolation=True,
-    )
-
-    sandbox = RuntimeSandbox(
-        timeout=7.5,
-        security_policy=policy,
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('hello')")
-
-    assert result.success is True
-    assert backend.received_timeout == 7.5
     
 def test_runtime_sandbox_does_not_call_unavailable_isolation_backend():
     class UnavailableBackend(IsolationBackend):
@@ -2805,15 +2540,6 @@ def test_runtime_sandbox_handles_isolation_backend_exception():
     assert "Backend execution failed." in result.stderr
     assert result.exit_code == -1
     
-def test_isolation_capabilities_are_immutable():
-    capabilities = IsolationCapabilities(
-        network_isolation=True,
-        filesystem_isolation=True,
-        process_isolation=True,
-    )
-
-    with pytest.raises(FrozenInstanceError):
-        capabilities.network_isolation = False
         
         
 def test_runtime_sandbox_rejects_when_network_isolation_is_missing_from_complete_policy():
@@ -3038,35 +2764,6 @@ def test_runtime_sandbox_does_not_execute_unavailable_network_backend():
     assert "network isolation" in result.stderr.lower()
     assert result.exit_code == -1
     
-def test_runtime_sandbox_checks_backend_availability_before_capabilities():
-    class UnavailableIncompleteBackend(IsolationBackend):
-        def is_available(self) -> bool:
-            return False
-
-        def capabilities(self) -> IsolationCapabilities:
-            raise AssertionError(
-                "Capabilities must not be checked when backend is unavailable."
-            )
-
-        def run(self, code: str, timeout: float) -> SandboxResult:
-            raise AssertionError("Backend must not execute.")
-
-    backend = UnavailableIncompleteBackend()
-
-    policy = SandboxSecurityPolicy(
-        require_filesystem_isolation=True,
-    )
-
-    sandbox = RuntimeSandbox(
-        security_policy=policy,
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('should not run')")
-
-    assert result.success is False
-    assert "filesystem isolation" in result.stderr.lower()
-    assert result.exit_code == -1
     
 def test_runtime_sandbox_checks_backend_availability_before_process_capabilities():
     class UnavailableProcessBackend(IsolationBackend):
@@ -3162,86 +2859,13 @@ def test_runtime_sandbox_checks_backend_availability_before_combined_capabilitie
     assert "filesystem/process isolation" in result.stderr.lower()
     assert result.exit_code == -1
     
-def test_runtime_sandbox_rejects_non_positive_timeout():
-    with pytest.raises(ValueError, match="Timeout must be greater than zero"):
-        RuntimeSandbox(timeout=0)
-
-    with pytest.raises(ValueError, match="Timeout must be greater than zero"):
-        RuntimeSandbox(timeout=-1)
         
-def test_runtime_sandbox_rejects_non_positive_max_output_size():
-    with pytest.raises(
-        ValueError,
-        match="Max output size must be greater than zero",
-    ):
-        RuntimeSandbox(max_output_size=0)
-
-    with pytest.raises(
-        ValueError,
-        match="Max output size must be greater than zero",
-    ):
-        RuntimeSandbox(max_output_size=-1)
         
-def test_runtime_sandbox_limits_stdout_size():
-    sandbox = unsafe_sandbox(max_output_size=10)
-
-    result = sandbox.run("print('A' * 100)")
-
-    assert result.success is False
-    assert len(result.stdout) <= 10
-    assert "maximum allowed size" in result.stderr.lower()
-    assert result.exit_code == -1
     
-def test_runtime_sandbox_limits_stderr_size():
-    sandbox = unsafe_sandbox(max_output_size=10)
-
-    result = sandbox.run(
-        "import sys; sys.stderr.write('E' * 100)"
-    )
-
-    assert result.success is False
-    assert len(result.stderr) <= 10 + len(
-        "\nError output exceeded the maximum allowed size."
-    )
-    assert "error output exceeded the maximum allowed size" in result.stderr.lower()
-    assert result.exit_code == -1
     
-def test_runtime_sandbox_rejects_non_string_code():
-    sandbox = RuntimeSandbox()
-
-    result = sandbox.run(None)
-
-    assert result.success is False
-    assert result.stderr == "Code must be a string."
-    assert result.exit_code == -1
     
-def test_runtime_sandbox_rejects_empty_code():
-    sandbox = RuntimeSandbox()
-
-    result = sandbox.run("")
-
-    assert result.success is False
-    assert result.stderr == "Code cannot be empty."
-    assert result.exit_code == -1
     
-def test_runtime_sandbox_rejects_whitespace_only_code():
-    sandbox = RuntimeSandbox()
-
-    result = sandbox.run("   \n\t  ")
-
-    assert result.success is False
-    assert result.stderr == "Code cannot be empty."
-    assert result.exit_code == -1
     
-def test_runtime_sandbox_successful_execution():
-    sandbox = unsafe_sandbox()
-
-    result = sandbox.run("print('AEGIS_OK')")
-
-    assert result.success is True
-    assert result.stdout.strip() == "AEGIS_OK"
-    assert result.stderr == ""
-    assert result.exit_code == 0
     
 def test_runtime_sandbox_allows_stderr_on_successful_execution():
     sandbox = unsafe_sandbox()
@@ -3266,44 +2890,9 @@ def test_runtime_sandbox_reports_python_error():
     assert "AEGIS_TEST_ERROR" in result.stderr
     assert result.exit_code != 0
     
-def test_runtime_sandbox_uses_temporary_working_directory():
-    sandbox = unsafe_sandbox()
-
-    result = sandbox.run(
-        "import os; print(os.getcwd())"
-    )
-
-    assert result.success is True
-    assert result.stdout.strip()
-    assert result.stdout.strip().lower() != r"e:\aegis"
     
-def test_runtime_sandbox_does_not_write_to_project_directory():
-    sandbox = unsafe_sandbox()
-
-    result = sandbox.run(
-        "from pathlib import Path; "
-        "Path('aegis_temp_test.txt').write_text('secret'); "
-        "print(Path('aegis_temp_test.txt').exists())"
-    )
-
-    assert result.success is True
-    assert result.stdout.strip() == "True"
-
-    project_file = Path("aegis_temp_test.txt")
-
-    assert not project_file.exists()
 
 
-def test_runtime_sandbox_times_out_long_running_code():
-    sandbox = unsafe_sandbox(timeout=0.2)
-
-    result = sandbox.run(
-        "while True: pass"
-    )
-
-    assert result.success is False
-    assert "execution timed out" in result.stderr.lower()
-    assert result.exit_code == -1
     
 def test_runtime_sandbox_allow_network_requires_isolation_for_strict_network_policy():
     sandbox = RuntimeSandbox(
@@ -3397,51 +2986,8 @@ def test_runtime_sandbox_passes_configured_timeout_to_custom_backend():
     assert result.stdout == "TIMEOUT_OK"
     assert backend.received_timeout == 3.5 
     
-def test_runtime_sandbox_does_not_use_backend_without_required_isolation():
-    class ForbiddenBackend(IsolationBackend):
-        def is_available(self) -> bool:
-            raise AssertionError("Backend availability must not be checked.")
-
-        def capabilities(self) -> IsolationCapabilities:
-            raise AssertionError("Capabilities must not be checked.")
-
-        def run(self, code: str, timeout: float) -> SandboxResult:
-            raise AssertionError("Backend must not execute.")
-
-    sandbox = unsafe_sandbox(
-        isolation_backend=ForbiddenBackend(),
-    )
-
-    result = sandbox.run("print('NORMAL_EXECUTION')")
-
-    assert result.success is True
-    assert result.stdout.strip() == "NORMAL_EXECUTION"
-    assert result.stderr == ""
-    assert result.exit_code == 0  
     
-def test_runtime_sandbox_default_security_policy():
-    sandbox = RuntimeSandbox()
-
-    policy = sandbox.security_policy
-
-    assert policy.allow_network is False
-    assert policy.requires_network_isolation() is False
-    assert policy.requires_filesystem_isolation() is False
-    assert policy.requires_process_isolation() is False
     
-def test_runtime_sandbox_preserves_custom_security_policy():
-    policy = SandboxSecurityPolicy(
-        allow_network=True,
-        require_network_isolation=True,
-        require_filesystem_isolation=True,
-        require_process_isolation=True,
-    )
-
-    sandbox = RuntimeSandbox(
-        security_policy=policy,
-    )
-
-    assert sandbox.security_policy is policy
     
     
 def test_runtime_sandbox_returns_backend_isolation_capabilities():
@@ -3667,17 +3213,6 @@ def test_runtime_sandbox_handles_unicode_stdout():
     assert result.stderr == ""
     assert result.exit_code == 0
     
-def test_runtime_sandbox_handles_unicode_stderr():
-    sandbox = unsafe_sandbox()
-
-    result = sandbox.run(
-        "import sys; sys.stderr.write('AEGIS خطأ ✗')"
-    )
-
-    assert result.success is True
-    assert result.stdout == ""
-    assert result.stderr == "AEGIS خطأ ✗"
-    assert result.exit_code == 0
     
     
 def test_runtime_sandbox_handles_unicode_python_error():
@@ -3764,144 +3299,10 @@ def test_runtime_sandbox_custom_backend_preserves_unicode():
     assert result.exit_code == 0
     
     
-def test_runtime_sandbox_does_not_use_backend_without_required_isolation():
-    class SpyBackend(IsolationBackend):
-        def __init__(self):
-            self.called = False
-
-        def is_available(self):
-            self.called = True
-            return True
-
-        def capabilities(self):
-            self.called = True
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            self.called = True
-            raise AssertionError("Backend should not be used.")
-
-    backend = SpyBackend()
-
-    sandbox = unsafe_sandbox(
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('AEGIS')")
-
-    assert result.success is True
-    assert result.stdout.strip() == "AEGIS"
-    assert backend.called is False
-    
-def test_runtime_sandbox_missing_network_capability_prevents_execution():
-    class SpyBackend(IsolationBackend):
-        def __init__(self):
-            self.run_called = False
-
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=False,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            self.run_called = True
-            raise AssertionError("Backend must not execute.")
-
-    backend = SpyBackend()
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True,
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('AEGIS')")
-
-    assert result.success is False
-    assert "network isolation capability" in result.stderr
-    assert result.exit_code == -1
-    assert backend.run_called is False
-    
-def test_runtime_sandbox_missing_filesystem_capability_prevents_execution():
-    class SpyBackend(IsolationBackend):
-        def __init__(self):
-            self.run_called = False
-
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=False,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            self.run_called = True
-            raise AssertionError("Backend must not execute.")
-
-    backend = SpyBackend()
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_filesystem_isolation=True,
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('AEGIS')")
-
-    assert result.success is False
-    assert "filesystem isolation capability" in result.stderr
-    assert result.exit_code == -1
-    assert backend.run_called is False
     
     
-def test_runtime_sandbox_missing_process_capability_prevents_execution():
-    class SpyBackend(IsolationBackend):
-        def __init__(self):
-            self.run_called = False
-
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=False,
-            )
-
-        def run(self, code, timeout):
-            self.run_called = True
-            raise AssertionError("Backend must not execute.")
-
-    backend = SpyBackend()
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_process_isolation=True,
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('AEGIS')")
-
-    assert result.success is False
-    assert "process isolation capability" in result.stderr
-    assert result.exit_code == -1
-    assert backend.run_called is False
+    
+    
     
     
     
@@ -3948,180 +3349,10 @@ def test_runtime_sandbox_executes_backend_when_all_isolation_capabilities_exist(
     assert result.exit_code == 0
     assert backend.run_called is True
     
-def test_runtime_sandbox_passes_timeout_to_backend():
-    class SpyBackend(IsolationBackend):
-        def __init__(self):
-            self.received_timeout = None
-
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            self.received_timeout = timeout
-
-            return SandboxResult(
-                success=True,
-                stdout="timeout received",
-                stderr="",
-                exit_code=0,
-            )
-
-    backend = SpyBackend()
-
-    sandbox = RuntimeSandbox(
-        timeout=3.5,
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True,
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('AEGIS')")
-
-    assert result.success is True
-    assert result.stdout == "timeout received"
-    assert backend.received_timeout == 3.5
     
-def test_runtime_sandbox_handles_backend_exception():
-    class FailingBackend(IsolationBackend):
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            raise RuntimeError("Backend execution failed")
-
-    backend = FailingBackend()
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True,
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('AEGIS')")
-
-    assert result.success is False
-    assert result.stdout == ""
-    assert result.stderr == "Backend execution failed"
-    assert result.exit_code == -1
     
-def test_runtime_sandbox_unavailable_backend_does_not_execute():
-    class UnavailableBackend(IsolationBackend):
-        def __init__(self):
-            self.run_called = False
-
-        def is_available(self):
-            return False
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            self.run_called = True
-            raise AssertionError("Unavailable backend must not execute.")
-
-    backend = UnavailableBackend()
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True,
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('AEGIS')")
-
-    assert result.success is False
-    assert "Secure network isolation is unavailable" in result.stderr
-    assert result.exit_code == -1
-    assert backend.run_called is False
     
-def test_runtime_sandbox_checks_backend_availability_before_capabilities():
-    class SpyBackend(IsolationBackend):
-        def __init__(self):
-            self.availability_called = False
-            self.capabilities_called = False
-
-        def is_available(self):
-            self.availability_called = True
-            return False
-
-        def capabilities(self):
-            self.capabilities_called = True
-            raise AssertionError(
-                "Capabilities must not be checked when backend is unavailable."
-            )
-
-        def run(self, code, timeout):
-            raise AssertionError("Backend must not execute.")
-
-    backend = SpyBackend()
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True,
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('AEGIS')")
-
-    assert result.success is False
-    assert backend.availability_called is True
-    assert backend.capabilities_called is False
     
-def test_runtime_sandbox_checks_filesystem_capability_before_execution():
-    class SpyBackend(IsolationBackend):
-        def __init__(self):
-            self.run_called = False
-
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=False,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            self.run_called = True
-            raise AssertionError("Backend must not execute.")
-
-    backend = SpyBackend()
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_filesystem_isolation=True,
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('AEGIS')")
-
-    assert result.success is False
-    assert "filesystem isolation capability" in result.stderr
-    assert backend.run_called is False
     
 def test_runtime_sandbox_writes_only_inside_temp_directory():
     sandbox = unsafe_sandbox()
@@ -4135,23 +3366,6 @@ def test_runtime_sandbox_writes_only_inside_temp_directory():
     assert result.success is True
     assert result.stdout.strip() == "True"
     
-def test_runtime_sandbox_does_not_write_to_project_directory():
-    from pathlib import Path
-
-    project_file = Path("aegis_sandbox_escape_test.txt")
-
-    if project_file.exists():
-        project_file.unlink()
-
-    sandbox = unsafe_sandbox()
-
-    result = sandbox.run(
-        "from pathlib import Path; "
-        "Path('aegis_sandbox_escape_test.txt').write_text('AEGIS', encoding='utf-8')"
-    )
-
-    assert result.success is True
-    assert not project_file.exists()
     
 def test_runtime_sandbox_cleans_up_temp_directory():
     from pathlib import Path
@@ -4183,81 +3397,9 @@ def test_runtime_sandbox_cleans_up_temp_directory():
     assert captured_path is not None
     assert not captured_path.exists()
     
-def test_runtime_sandbox_cleans_up_temp_directory_after_failure():
-    from pathlib import Path
-
-    captured_path = None
-
-    original_run = subprocess.run
-
-    def spy_run(*args, **kwargs):
-        nonlocal captured_path
-
-        captured_path = Path(kwargs["cwd"])
-
-        return original_run(*args, **kwargs)
-
-    subprocess.run = spy_run
-
-    try:
-        sandbox = unsafe_sandbox()
-
-        result = sandbox.run(
-            "from pathlib import Path; "
-            "Path('temporary_failure.txt').write_text('AEGIS', encoding='utf-8'); "
-            "raise RuntimeError('intentional failure')"
-        )
-    finally:
-        subprocess.run = original_run
-
-    assert result.success is False
-    assert captured_path is not None
-    assert not captured_path.exists()  
-    
-def test_runtime_sandbox_cleans_up_temp_directory_after_timeout():
-    from pathlib import Path
-
-    captured_path = None
-
-    original_run = subprocess.run
-
-    def spy_run(*args, **kwargs):
-        nonlocal captured_path
-
-        captured_path = Path(kwargs["cwd"])
-
-        return original_run(*args, **kwargs)
-
-    subprocess.run = spy_run
-
-    try:
-        sandbox = unsafe_sandbox(timeout=0.2)
-
-        result = sandbox.run(
-            "from pathlib import Path; "
-            "Path('temporary_timeout.txt').write_text('AEGIS', encoding='utf-8'); "
-            "import time; "
-            "time.sleep(2)"
-        )
-    finally:
-        subprocess.run = original_run
-
-    assert result.success is False
-    assert "Execution timed out." in result.stderr
-    assert captured_path is not None
-    assert not captured_path.exists()
     
     
-def test_runtime_sandbox_handles_large_stderr_without_exceeding_limit():
-    sandbox = RuntimeSandbox(max_output_size=100)
-
-    result = sandbox.run(
-        "import sys; sys.stderr.write('X' * 1000)"
-    )
-
-    assert result.success is False
-    assert "maximum allowed size" in result.stderr
-    assert result.exit_code == -1
+    
     
 def test_runtime_sandbox_handles_large_stdout_and_stderr():
     sandbox = unsafe_sandbox(max_output_size=100)
@@ -4300,32 +3442,7 @@ def test_runtime_sandbox_allows_stderr_exactly_at_max_size():
     assert len(result.stderr) == 100
     assert result.exit_code == 0
     
-def test_runtime_sandbox_rejects_stdout_one_byte_over_limit():
-    sandbox = unsafe_sandbox(max_output_size=100)
-
-    result = sandbox.run(
-        "print('A' * 101, end='')"
-    )
-
-    assert result.success is False
-    assert len(result.stdout) == 100
-    assert "maximum allowed size" in result.stderr
-    assert result.exit_code == -1
     
-def test_runtime_sandbox_rejects_stderr_one_byte_over_limit():
-    sandbox = unsafe_sandbox(max_output_size=100)
-
-    result = sandbox.run(
-        "import sys; sys.stderr.write('E' * 101)"
-    )
-
-    assert result.success is False
-    assert len(result.stderr) == 100 + len(
-        "\nError output exceeded the maximum allowed size."
-    )
-    assert result.stderr.startswith("E" * 100)
-    assert "Error output exceeded the maximum allowed size." in result.stderr
-    assert result.exit_code == -1
     
 def test_runtime_sandbox_supports_minimum_output_size():
     sandbox = unsafe_sandbox(max_output_size=1)
@@ -4339,47 +3456,9 @@ def test_runtime_sandbox_supports_minimum_output_size():
     assert "maximum allowed size" in result.stderr
     assert result.exit_code == -1
     
-def test_runtime_sandbox_rejects_non_string_code():
-    sandbox = RuntimeSandbox()
-
-    result = sandbox.run(None)
-
-    assert result.success is False
-    assert result.stdout == ""
-    assert result.stderr == "Code must be a string."
-    assert result.exit_code == -1
     
-def test_runtime_sandbox_rejects_empty_code():
-    sandbox = RuntimeSandbox()
-
-    result = sandbox.run("")
-
-    assert result.success is False
-    assert result.stdout == ""
-    assert result.stderr == "Code cannot be empty."
-    assert result.exit_code == -1
     
-def test_runtime_sandbox_rejects_whitespace_only_code():
-    sandbox = RuntimeSandbox()
-
-    result = sandbox.run("   \n\t  ")
-
-    assert result.success is False
-    assert result.stdout == ""
-    assert result.stderr == "Code cannot be empty."
-    assert result.exit_code == -1
     
-def test_runtime_sandbox_successful_execution():
-    sandbox = unsafe_sandbox()
-
-    result = sandbox.run(
-        "print('AEGIS')"
-    )
-
-    assert result.success is True
-    assert result.stdout.strip() == "AEGIS"
-    assert result.stderr == ""
-    assert result.exit_code == 0  
     
 def test_runtime_sandbox_returns_failure_for_python_error():
     sandbox = unsafe_sandbox()
@@ -4393,125 +3472,17 @@ def test_runtime_sandbox_returns_failure_for_python_error():
     assert "AEGIS test error" in result.stderr
     assert result.exit_code != 0
     
-def test_runtime_sandbox_preserves_stderr_on_success():
-    sandbox = unsafe_sandbox()
-
-    result = sandbox.run(
-        "import sys; sys.stderr.write('warning')"
-    )
-
-    assert result.success is True
-    assert result.stdout == ""
-    assert result.stderr == "warning"
-    assert result.exit_code == 0
     
     
-def test_runtime_sandbox_preserves_nonzero_exit_code():
-    sandbox = unsafe_sandbox()
-
-    result = sandbox.run(
-        "import sys; sys.exit(7)"
-    )
-
-    assert result.success is False
-    assert result.stdout == ""
-    assert result.stderr == ""
-    assert result.exit_code == 7
-    
-def test_runtime_sandbox_preserves_stdout_on_nonzero_exit():
-    sandbox = unsafe_sandbox()
-
-    result = sandbox.run(
-        "print('AEGIS output'); import sys; sys.exit(7)"
-    )
-
-    assert result.success is False
-    assert result.stdout.strip() == "AEGIS output"
-    assert result.stderr == ""
-    assert result.exit_code == 7
-    
-def test_runtime_sandbox_preserves_stderr_on_nonzero_exit():
-    sandbox = unsafe_sandbox()
-
-    result = sandbox.run(
-        "import sys; "
-        "sys.stderr.write('AEGIS error'); "
-        "sys.exit(7)"
-    )
-
-    assert result.success is False
-    assert result.stdout == ""
-    assert result.stderr == "AEGIS error"
-    assert result.exit_code == 7
     
     
-def test_runtime_sandbox_preserves_unicode_on_nonzero_exit():
-    sandbox = unsafe_sandbox()
-
-    result = sandbox.run(
-        "import sys; "
-        "print('AEGIS نجاح ✓'); "
-        "sys.stderr.write('AEGIS خطأ ✗'); "
-        "sys.exit(7)"
-    )
-
-    assert result.success is False
-    assert result.stdout.strip() == "AEGIS نجاح ✓"
-    assert result.stderr == "AEGIS خطأ ✗"
-    assert result.exit_code == 7
-    
-def test_runtime_sandbox_preserves_stdout_before_timeout():
-    sandbox = unsafe_sandbox(timeout=0.2)
-
-    result = sandbox.run(
-        "import time; "
-        "print('AEGIS before timeout', flush=True); "
-        "time.sleep(2)"
-    )
-
-    assert result.success is False
-    assert "AEGIS before timeout" in result.stdout
-    assert "Execution timed out." in result.stderr
-    assert result.exit_code == -1
     
     
-def test_runtime_sandbox_preserves_stderr_before_timeout():
-    sandbox = unsafe_sandbox(timeout=0.2)
-
-    result = sandbox.run(
-        "import sys, time; "
-        "sys.stderr.write('AEGIS warning before timeout'); "
-        "sys.stderr.flush(); "
-        "time.sleep(2)"
-    )
-
-    assert result.success is False
-    assert "AEGIS warning before timeout" in result.stderr
-    assert "Execution timed out." in result.stderr
-    assert result.exit_code == -1
     
-def test_runtime_sandbox_timeout_without_output():
-    sandbox = unsafe_sandbox(timeout=0.2)
-
-    result = sandbox.run(
-        "import time; time.sleep(2)"
-    )
-
-    assert result.success is False
-    assert result.stdout == ""
-    assert "Execution timed out." in result.stderr
-    assert result.exit_code == -1
     
-def test_runtime_sandbox_accepts_small_positive_timeout():
-    sandbox = RuntimeSandbox(timeout=0.01)
-
-    result = sandbox.run(
-        "import time; time.sleep(1)"
-    )
-
-    assert result.success is False
-    assert "Execution timed out." in result.stderr
-    assert result.exit_code == -1
+    
+    
+    
     
 def test_runtime_sandbox_combined_isolation_missing_capability_prevents_execution():
     class SpyBackend(IsolationBackend):
@@ -4549,13 +3520,6 @@ def test_runtime_sandbox_combined_isolation_missing_capability_prevents_executio
     assert result.exit_code == -1
     assert backend.run_called is False
     
-def test_runtime_sandbox_accepts_minimum_output_size():
-    sandbox = RuntimeSandbox(max_output_size=1)
-
-    result = sandbox.run("print('A', end='')")
-
-    assert result.success is True
-    assert result.stdout == "A"
     
 def test_runtime_sandbox_output_exactly_at_limit_succeeds():
     sandbox = unsafe_sandbox(max_output_size=3)
@@ -4579,32 +3543,7 @@ def test_runtime_sandbox_stderr_exactly_at_limit_succeeds():
     assert result.stdout == ""
     assert result.exit_code == 0
     
-def test_runtime_sandbox_preserves_stdout_before_timeout():
-    sandbox = unsafe_sandbox(timeout=0.1)
-
-    result = sandbox.run(
-        "import time; print('before-timeout', flush=True); time.sleep(1)"
-    )
-
-    assert result.success is False
-    assert "before-timeout" in result.stdout
-    assert "Execution timed out." in result.stderr
-    assert result.exit_code == -1
     
-def test_runtime_sandbox_preserves_stderr_before_timeout():
-    sandbox = unsafe_sandbox(timeout=0.1)
-
-    result = sandbox.run(
-        "import sys, time; "
-        "sys.stderr.write('before-timeout'); "
-        "sys.stderr.flush(); "
-        "time.sleep(1)"
-    )
-
-    assert result.success is False
-    assert "before-timeout" in result.stderr
-    assert "Execution timed out." in result.stderr
-    assert result.exit_code == -1
     
     
 def test_runtime_sandbox_preserves_unicode_stderr_before_timeout():
@@ -4636,17 +3575,6 @@ def test_runtime_sandbox_preserves_unicode_stdout_before_timeout():
     assert "Execution timed out." in result.stderr
     assert result.exit_code == -1
     
-def test_runtime_sandbox_timeout_without_output():
-    sandbox = unsafe_sandbox(timeout=0.1)
-
-    result = sandbox.run(
-        "import time; time.sleep(1)"
-    )
-
-    assert result.success is False
-    assert result.stdout == ""
-    assert "Execution timed out." in result.stderr
-    assert result.exit_code == -1
     
 def test_runtime_sandbox_unicode_stdout_exactly_at_limit_succeeds():
     sandbox = unsafe_sandbox(max_output_size=4)
@@ -4672,17 +3600,6 @@ def test_runtime_sandbox_unicode_stderr_exactly_at_limit_succeeds():
     assert result.stderr == "أ"
     assert result.exit_code == 0
     
-def test_runtime_sandbox_preserves_parent_working_directory():
-    import os
-
-    original_cwd = os.getcwd()
-
-    sandbox = unsafe_sandbox()
-
-    result = sandbox.run("import os; print(os.getcwd())")
-
-    assert result.success is True
-    assert os.getcwd() == original_cwd 
     
     
 def test_runtime_sandbox_temp_directory_is_removed_after_success():
@@ -4769,15 +3686,6 @@ def test_runtime_sandbox_temp_directory_is_removed_after_timeout():
     assert captured_cwd is not None
     assert os.path.exists(captured_cwd) is False
     
-def test_runtime_sandbox_preserves_nonzero_exit_code():
-    sandbox = unsafe_sandbox()
-
-    result = sandbox.run(
-        "raise SystemExit(7)"
-    )
-
-    assert result.success is False
-    assert result.exit_code == 7
     
 def test_runtime_sandbox_preserves_stdout_on_nonzero_exit():
     sandbox = unsafe_sandbox()
@@ -4897,15 +3805,6 @@ def test_runtime_sandbox_rejects_empty_string_code():
     assert result.exit_code == -1
     assert result.stderr == "Code cannot be empty."
     
-def test_runtime_sandbox_rejects_whitespace_only_code():
-    sandbox = RuntimeSandbox()
-
-    result = sandbox.run("   \n\t  ")
-
-    assert result.success is False
-    assert result.stdout == ""
-    assert result.exit_code == -1
-    assert result.stderr == "Code cannot be empty."
     
 def test_runtime_sandbox_handles_python_syntax_error():
     sandbox = RuntimeSandbox()
@@ -5015,34 +3914,8 @@ def test_runtime_sandbox_temp_directory_exists_during_execution():
     assert result.stdout.strip() == "True"
     
     
-def test_runtime_sandbox_allows_writing_inside_temp_directory():
-    sandbox = unsafe_sandbox()
-
-    result = sandbox.run(
-        "from pathlib import Path; "
-        "Path('inside.txt').write_text('AEGIS'); "
-        "print(Path('inside.txt').read_text())"
-    )
-
-    assert result.success is True
-    assert result.stdout.strip() == "AEGIS"
-    assert result.stderr == ""
-    assert result.exit_code == 0
     
     
-def test_runtime_sandbox_can_read_file_inside_temp_directory():
-    sandbox = unsafe_sandbox()
-
-    result = sandbox.run(
-        "from pathlib import Path; "
-        "Path('data.txt').write_text('AEGIS DATA'); "
-        "print(Path('data.txt').read_text())"
-    )
-
-    assert result.success is True
-    assert result.stdout.strip() == "AEGIS DATA"
-    assert result.stderr == ""
-    assert result.exit_code == 0
     
 def test_runtime_sandbox_allow_network_false_does_not_claim_isolation():
     sandbox = RuntimeSandbox(allow_network=False)
@@ -5091,75 +3964,7 @@ def test_runtime_sandbox_uses_custom_backend_capabilities():
     assert capabilities.process_isolation is True
     
     
-def test_runtime_sandbox_does_not_use_backend_without_required_isolation():
-    class SpyBackend(IsolationBackend):
-        def __init__(self):
-            self.run_called = False
-
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            self.run_called = True
-            raise AssertionError("Custom backend should not be used.")
-
-    backend = SpyBackend()
-
-    sandbox = unsafe_sandbox(
-        isolation_backend=backend
-    )
-
-    result = sandbox.run("print('AEGIS')")
-
-    assert result.success is True
-    assert result.stdout == "AEGIS\n"
-    assert backend.run_called is False
     
-def test_runtime_sandbox_passes_timeout_to_custom_backend():
-    class SpyBackend(IsolationBackend):
-        def __init__(self):
-            self.received_timeout = None
-
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            self.received_timeout = timeout
-            return SandboxResult(
-                success=True,
-                stdout="ok",
-                stderr="",
-                exit_code=0,
-            )
-
-    backend = SpyBackend()
-
-    sandbox = RuntimeSandbox(
-        timeout=2.5,
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('AEGIS')")
-
-    assert result.success is True
-    assert backend.received_timeout == 2.5
     
 def test_runtime_sandbox_handles_custom_backend_exception():
     class FailingBackend(IsolationBackend):
@@ -5190,146 +3995,10 @@ def test_runtime_sandbox_handles_custom_backend_exception():
     assert "Backend execution failed" in result.stderr
     assert result.exit_code == -1
     
-def test_runtime_sandbox_unavailable_backend_does_not_execute():
-    class UnavailableBackend(IsolationBackend):
-        def __init__(self):
-            self.run_called = False
-
-        def is_available(self):
-            return False
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            self.run_called = True
-            raise AssertionError("Unavailable backend must not execute.")
-
-    backend = UnavailableBackend()
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('AEGIS')")
-
-    assert result.success is False
-    assert "is unavailable" in result.stderr
-    assert result.exit_code == -1
-    assert backend.run_called is False
-    
-def test_runtime_sandbox_missing_network_capability_prevents_execution():
-    class SpyBackend(IsolationBackend):
-        def __init__(self):
-            self.run_called = False
-
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=False,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            self.run_called = True
-            raise AssertionError("Backend must not execute.")
-
-    backend = SpyBackend()
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('AEGIS')")
-
-    assert result.success is False
-    assert "network isolation capability" in result.stderr
-    assert result.exit_code == -1
-    assert backend.run_called is False 
-    
-def test_runtime_sandbox_missing_filesystem_capability_prevents_execution():
-    class SpyBackend(IsolationBackend):
-        def __init__(self):
-            self.run_called = False
-
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=False,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            self.run_called = True
-            raise AssertionError("Backend must not execute.")
-
-    backend = SpyBackend()
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_filesystem_isolation=True
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('AEGIS')")
-
-    assert result.success is False
-    assert "filesystem isolation capability" in result.stderr
-    assert result.exit_code == -1
-    assert backend.run_called is False
     
     
-def test_runtime_sandbox_missing_process_capability_prevents_execution():
-    class SpyBackend(IsolationBackend):
-        def __init__(self):
-            self.run_called = False
-
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=False,
-            )
-
-        def run(self, code, timeout):
-            self.run_called = True
-            raise AssertionError("Backend must not execute.")
-
-    backend = SpyBackend()
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_process_isolation=True
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('AEGIS')")
-
-    assert result.success is False
-    assert "process isolation capability" in result.stderr
-    assert result.exit_code == -1
-    assert backend.run_called is False
+    
+    
     
 def test_runtime_sandbox_executes_backend_when_all_required_capabilities_exist():
     class TestBackend(IsolationBackend):
@@ -5393,48 +4062,8 @@ def test_runtime_sandbox_default_security_policy():
     assert policy.require_filesystem_isolation is False
     assert policy.require_process_isolation is False
     
-def test_runtime_sandbox_preserves_custom_security_policy():
-    policy = SandboxSecurityPolicy(
-        allow_network=True,
-        require_network_isolation=True,
-        require_filesystem_isolation=True,
-        require_process_isolation=False,
-    )
-
-    sandbox = RuntimeSandbox(
-        security_policy=policy
-    )
-
-    assert sandbox.security_policy is policy
-    assert sandbox.allow_network is True
     
-def test_runtime_sandbox_security_policy_is_immutable():
-    policy = SandboxSecurityPolicy()
-
-    try:
-        policy.allow_network = True
-        changed = True
-    except Exception:
-        changed = False
-
-    assert changed is False
-    assert policy.allow_network is False
     
-def test_isolation_capabilities_are_immutable():
-    capabilities = IsolationCapabilities(
-        network_isolation=True,
-        filesystem_isolation=True,
-        process_isolation=True,
-    )
-
-    try:
-        capabilities.network_isolation = False
-        changed = True
-    except Exception:
-        changed = False
-
-    assert changed is False
-    assert capabilities.network_isolation is True
     
 def test_security_policy_is_immutable():
     policy = SandboxSecurityPolicy(
@@ -5467,10 +4096,6 @@ def test_custom_security_policy_preserves_all_values():
     assert policy.requires_process_isolation() is True
     
     
-def test_runtime_sandbox_uses_no_isolation_backend_by_default():
-    sandbox = RuntimeSandbox()
-
-    assert isinstance(sandbox.isolation_backend, NoIsolationBackend)
     
 def test_custom_isolation_backend_replaces_default():
     backend = NoIsolationBackend()
@@ -5478,43 +4103,6 @@ def test_custom_isolation_backend_replaces_default():
 
     assert sandbox.isolation_backend is backend
     
-def test_runtime_sandbox_passes_timeout_to_backend():
-    class SpyBackend(NoIsolationBackend):
-        def __init__(self):
-            self.received_timeout = None
-
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            self.received_timeout = timeout
-            return SandboxResult(
-                success=True,
-                stdout="ok",
-                stderr="",
-                exit_code=0,
-            )
-
-    backend = SpyBackend()
-    sandbox = RuntimeSandbox(
-        timeout=7.5,
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('hello')")
-
-    assert result.success is True
-    assert backend.received_timeout == 7.5
     
 def test_backend_is_not_used_without_required_isolation():
     class SpyBackend(NoIsolationBackend):
@@ -5763,20 +4351,6 @@ def test_allow_network_does_not_imply_network_isolation():
     assert policy.allow_network is True
     assert policy.requires_network_isolation() is False
     
-def test_runtime_sandbox_preserves_custom_security_policy():
-    policy = SandboxSecurityPolicy(
-        allow_network=True,
-        require_network_isolation=True,
-        require_filesystem_isolation=True,
-        require_process_isolation=False,
-    )
-
-    sandbox = RuntimeSandbox(
-        security_policy=policy
-    )
-
-    assert sandbox.security_policy is policy
-    assert sandbox.allow_network is True 
     
 def test_runtime_sandbox_returns_backend_capabilities():
     backend = NoIsolationBackend()
@@ -5990,39 +4564,7 @@ def test_all_required_isolation_rejects_unavailable_backend():
     assert "isolation" in result.stderr.lower()
     assert "unavailable" in result.stderr.lower()
     
-def test_runtime_sandbox_rejects_non_positive_timeout():
-    try:
-        RuntimeSandbox(timeout=0)
-        created = True
-    except ValueError:
-        created = False
-
-    assert created is False
-
-    try:
-        RuntimeSandbox(timeout=-1)
-        created = True
-    except ValueError:
-        created = False
-
-    assert created is False
     
-def test_runtime_sandbox_rejects_non_positive_max_output_size():
-    try:
-        RuntimeSandbox(max_output_size=0)
-        created = True
-    except ValueError:
-        created = False
-
-    assert created is False
-
-    try:
-        RuntimeSandbox(max_output_size=-1)
-        created = True
-    except ValueError:
-        created = False
-
-    assert created is False
     
 def test_stdout_exceeding_limit_is_rejected():
     sandbox = unsafe_sandbox(max_output_size=10)
@@ -6085,72 +4627,12 @@ def test_stderr_one_byte_over_limit_is_rejected():
     assert result.stderr.startswith("1234567890")
     assert "error output exceeded the maximum allowed size" in result.stderr.lower()
     
-def test_runtime_sandbox_accepts_minimum_output_size():
-    sandbox = RuntimeSandbox(max_output_size=1)
-
-    result = sandbox.run("print('x', end='')")
-
-    assert result.success is True
-    assert result.stdout == "x"
     
-def test_runtime_sandbox_rejects_non_string_code():
-    sandbox = RuntimeSandbox()
-
-    result = sandbox.run(123)
-
-    assert result.success is False
-    assert result.exit_code == -1
-    assert "code must be a string" in result.stderr.lower() 
     
-def test_runtime_sandbox_rejects_empty_code():
-    sandbox = RuntimeSandbox()
-
-    result = sandbox.run("")
-
-    assert result.success is False
-    assert result.exit_code == -1
-    assert "code cannot be empty" in result.stderr.lower()
     
-def test_runtime_sandbox_rejects_whitespace_only_code():
-    sandbox = RuntimeSandbox()
-
-    result = sandbox.run("   \n\t   ")
-
-    assert result.success is False
-    assert result.exit_code == -1
-    assert "code cannot be empty" in result.stderr.lower()
     
-def test_runtime_sandbox_executes_python_successfully():
-    sandbox = unsafe_sandbox()
-
-    result = sandbox.run("print('hello')")
-
-    assert result.success is True
-    assert result.stdout == "hello\n"
-    assert result.stderr == ""
-    assert result.exit_code == 0
     
-def test_runtime_sandbox_handles_python_error():
-    sandbox = unsafe_sandbox()
-
-    result = sandbox.run("raise ValueError('test error')")
-
-    assert result.success is False
-    assert result.exit_code != 0
-    assert "ValueError" in result.stderr
-    assert "test error" in result.stderr
     
-def test_runtime_sandbox_preserves_stderr_on_success():
-    sandbox = unsafe_sandbox()
-
-    result = sandbox.run(
-        "import sys; sys.stderr.write('warning')"
-    )
-
-    assert result.success is True
-    assert result.exit_code == 0
-    assert result.stdout == ""
-    assert result.stderr == "warning"
     
 def test_runtime_sandbox_preserves_nonzero_exit_code():
     sandbox = unsafe_sandbox()
@@ -6204,15 +4686,6 @@ def test_runtime_sandbox_preserves_stderr_before_timeout():
     assert "before timeout" in result.stderr
     assert "timed out" in result.stderr.lower()
     
-def test_runtime_sandbox_timeout_without_output():
-    sandbox = unsafe_sandbox(timeout=0.1)
-
-    result = sandbox.run("import time; time.sleep(1)")
-
-    assert result.success is False
-    assert result.stdout == ""
-    assert "timed out" in result.stderr.lower()
-    assert result.exit_code == -1
     
 def test_runtime_sandbox_accepts_small_positive_timeout():
     sandbox = RuntimeSandbox(timeout=0.01)
@@ -6221,32 +4694,7 @@ def test_runtime_sandbox_accepts_small_positive_timeout():
 
     assert result.exit_code in (0, -1)
     
-def test_runtime_sandbox_preserves_parent_working_directory():
-    import os
-
-    original_cwd = os.getcwd()
-    sandbox = unsafe_sandbox()
-
-    result = sandbox.run(
-        "import os; print(os.getcwd())"
-    )
-
-    assert result.success is True
-    assert os.getcwd() == original_cwd
     
-def test_runtime_sandbox_uses_temporary_working_directory():
-    import os
-
-    project_dir = os.getcwd()
-    sandbox = unsafe_sandbox()
-
-    result = sandbox.run(
-        "import os; print(os.getcwd())"
-    )
-
-    assert result.success is True
-    assert result.stdout.strip() != ""
-    assert os.path.abspath(result.stdout.strip()) != os.path.abspath(project_dir)
     
 def test_runtime_sandbox_does_not_write_to_project_directory():
     from pathlib import Path
@@ -6335,12 +4783,6 @@ def test_runtime_sandbox_can_read_file_inside_temp_directory():
     assert result.success is True
     assert result.stdout == "AEGIS\n"
     
-def test_allow_network_false_does_not_claim_network_isolation():
-    sandbox = RuntimeSandbox(allow_network=False)
-
-    assert sandbox.allow_network is False
-    assert sandbox.security_policy.allow_network is False
-    assert sandbox.security_policy.requires_network_isolation() is False
     
 def test_allow_network_true_does_not_create_isolation():
     sandbox = RuntimeSandbox(allow_network=True)
@@ -6355,11 +4797,6 @@ def test_runtime_sandbox_uses_no_isolation_backend_by_default():
 
     assert isinstance(sandbox.isolation_backend, NoIsolationBackend)
     
-def test_runtime_sandbox_uses_custom_isolation_backend():
-    backend = NoIsolationBackend()
-    sandbox = RuntimeSandbox(isolation_backend=backend)
-
-    assert sandbox.isolation_backend is backend
     
 def test_runtime_sandbox_passes_timeout_to_custom_backend():
     class SpyBackend(NoIsolationBackend):
@@ -6394,41 +4831,6 @@ def test_runtime_sandbox_passes_timeout_to_custom_backend():
     assert result.success is True
     assert backend.received_timeout == 7.5
     
-def test_runtime_sandbox_does_not_use_backend_without_required_isolation():
-    class SpyBackend(NoIsolationBackend):
-        def __init__(self):
-            self.called = False
-
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            self.called = True
-            return SandboxResult(True, "backend", "", 0)
-
-    backend = SpyBackend()
-
-    sandbox = unsafe_sandbox(
-        isolation_backend=backend,
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=False,
-            require_filesystem_isolation=False,
-            require_process_isolation=False,
-        ),
-    )
-
-    result = sandbox.run("print('local')")
-
-    assert result.success is True
-    assert result.stdout == "local\n"
-    assert backend.called is False
     
 def test_runtime_sandbox_unavailable_backend_does_not_execute():
     class SpyBackend(NoIsolationBackend):
@@ -6653,15 +5055,6 @@ def test_windows_isolation_backend_reports_all_capabilities_as_false():
     assert capabilities.filesystem_isolation is False
     assert capabilities.process_isolation is False
     
-def test_sandbox_security_policy_is_immutable():
-    policy = SandboxSecurityPolicy()
-
-    try:
-        policy.allow_network = True
-    except Exception:
-        pass
-    else:
-        raise AssertionError("SandboxSecurityPolicy should be immutable.")
     
 def test_sandbox_security_policy_defaults():
     policy = SandboxSecurityPolicy()
@@ -6716,20 +5109,6 @@ def test_runtime_sandbox_rejects_non_positive_timeout():
     with pytest.raises(ValueError, match="Timeout must be greater than zero"):
         RuntimeSandbox(timeout=-1)
         
-def test_runtime_sandbox_rejects_non_positive_max_output_size():
-    import pytest
-
-    with pytest.raises(
-        ValueError,
-        match="Max output size must be greater than zero",
-    ):
-        RuntimeSandbox(max_output_size=0)
-
-    with pytest.raises(
-        ValueError,
-        match="Max output size must be greater than zero",
-    ):
-        RuntimeSandbox(max_output_size=-1)
         
 def test_runtime_sandbox_rejects_stdout_over_max_output_size():
     sandbox = unsafe_sandbox(max_output_size=10)
@@ -6767,40 +5146,9 @@ def test_runtime_sandbox_allows_stderr_at_max_output_size():
     assert result.success is True
     assert result.stderr == "1234567890"
     
-def test_runtime_sandbox_accepts_minimum_output_size():
-    sandbox = RuntimeSandbox(max_output_size=1)
-
-    result = sandbox.run("print('x')")
-
-    assert result.success is False
-    assert "maximum allowed size" in result.stderr
     
-def test_runtime_sandbox_rejects_non_string_code():
-    sandbox = RuntimeSandbox()
-
-    result = sandbox.run(None)
-
-    assert result.success is False
-    assert result.exit_code == -1
-    assert result.stderr == "Code must be a string."
     
-def test_runtime_sandbox_rejects_empty_code():
-    sandbox = RuntimeSandbox()
-
-    result = sandbox.run("")
-
-    assert result.success is False
-    assert result.exit_code == -1
-    assert result.stderr == "Code cannot be empty."
     
-def test_runtime_sandbox_rejects_whitespace_only_code():
-    sandbox = RuntimeSandbox()
-
-    result = sandbox.run("   \n\t   ")
-
-    assert result.success is False
-    assert result.exit_code == -1
-    assert result.stderr == "Code cannot be empty."
     
 def test_runtime_sandbox_successful_execution():
     sandbox = unsafe_sandbox()
@@ -6888,16 +5236,6 @@ def test_runtime_sandbox_preserves_parent_working_directory():
     assert result.success is True
     assert os.getcwd() == original_cwd
     
-def test_runtime_sandbox_uses_temporary_working_directory():
-    sandbox = unsafe_sandbox()
-
-    result = sandbox.run(
-        "import os; print(os.getcwd())"
-    )
-
-    assert result.success is True
-    assert result.stdout.strip()
-    assert result.stdout.strip() != r"E:\AEGIS"
     
 def test_runtime_sandbox_does_not_change_project_working_directory():
     import os
@@ -6913,22 +5251,6 @@ def test_runtime_sandbox_does_not_change_project_working_directory():
     assert result.success is True
     assert os.getcwd() == original_cwd
     
-def test_runtime_sandbox_cleans_up_temporary_directory():
-    sandbox = unsafe_sandbox()
-
-    result = sandbox.run(
-        "from pathlib import Path; "
-        "Path('temporary_file.txt').write_text('hello'); "
-        "print(Path.cwd())"
-    )
-
-    assert result.success is True
-
-    temp_directory = result.stdout.strip()
-
-    from pathlib import Path
-
-    assert not Path(temp_directory).exists()
     
 def test_runtime_sandbox_cleans_up_temporary_directory_after_failure():
     sandbox = unsafe_sandbox()
@@ -6983,21 +5305,6 @@ def test_runtime_sandbox_allows_file_operations_inside_temp_directory():
     assert result.stdout == "AEGIS\n"
     assert result.stderr == ""
     
-def test_runtime_sandbox_preserves_parent_cwd_after_timeout():
-    import os
-
-    original_cwd = os.getcwd()
-    sandbox = unsafe_sandbox(timeout=0.2)
-
-    result = sandbox.run(
-        "import os, time; "
-        "os.chdir('..'); "
-        "time.sleep(2)"
-    )
-
-    assert result.success is False
-    assert "Execution timed out." in result.stderr
-    assert os.getcwd() == original_cwd
     
 def test_runtime_sandbox_preserves_parent_cwd_after_timeout():
     import os
@@ -7028,66 +5335,7 @@ def test_runtime_sandbox_preserves_custom_backend_identity():
 
     assert sandbox.isolation_backend is backend
     
-def test_runtime_sandbox_handles_backend_exception():
-    class FailingBackend(NoIsolationBackend):
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            raise RuntimeError("backend crashed")
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True
-        ),
-        isolation_backend=FailingBackend(),
-    )
-
-    result = sandbox.run("print('hello')")
-
-    assert result.success is False
-    assert result.exit_code == -1
-    assert result.stderr == "backend crashed"
     
-def test_runtime_sandbox_does_not_execute_unavailable_backend():
-    class SpyBackend(NoIsolationBackend):
-        def __init__(self):
-            self.run_called = False
-
-        def is_available(self):
-            return False
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            self.run_called = True
-            raise AssertionError("Backend run() must not be called.")
-
-    backend = SpyBackend()
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('blocked')")
-
-    assert result.success is False
-    assert backend.run_called is False
     
 def test_runtime_sandbox_checks_filesystem_capability_before_execution():
     class SpyBackend(NoIsolationBackend):
@@ -7227,36 +5475,6 @@ def test_runtime_sandbox_rejects_backend_with_all_required_capabilities_missing(
     assert backend.run_called is False
     assert "network isolation capability is unavailable" in result.stderr
     
-def test_runtime_sandbox_checks_availability_before_capabilities():
-    class SpyBackend(NoIsolationBackend):
-        def __init__(self):
-            self.calls = []
-
-        def is_available(self):
-            self.calls.append("available")
-            return False
-
-        def capabilities(self):
-            self.calls.append("capabilities")
-            raise AssertionError("capabilities() must not be called when backend is unavailable.")
-
-        def run(self, code, timeout):
-            self.calls.append("run")
-            raise AssertionError("run() must not be called.")
-
-    backend = SpyBackend()
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_process_isolation=True
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('blocked')")
-
-    assert result.success is False
-    assert backend.calls == ["available"]
     
 def test_runtime_sandbox_passes_timeout_to_isolation_backend():
     class SpyBackend(NoIsolationBackend):
@@ -7364,36 +5582,6 @@ def test_runtime_sandbox_returns_isolation_backend_result_unchanged():
     assert result.stderr == "backend-error"
     assert result.exit_code == 42
     
-def test_runtime_sandbox_converts_backend_exception_to_failure_result():
-    class FailingBackend(NoIsolationBackend):
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            raise RuntimeError("backend crashed")
-
-    backend = FailingBackend()
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('test')")
-
-    assert result.success is False
-    assert result.stdout == ""
-    assert result.stderr == "backend crashed"
-    assert result.exit_code == -1
     
 def test_runtime_sandbox_does_not_call_backend_without_isolation_requirement():
     class SpyBackend(NoIsolationBackend):
@@ -7629,41 +5817,6 @@ def test_runtime_sandbox_rejects_whitespace_code_before_backend_execution():
     assert result.exit_code == -1
     assert backend.run_called is False
     
-def test_runtime_sandbox_preserves_backend_success_result_exactly():
-    class CustomBackend(NoIsolationBackend):
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            return SandboxResult(
-                success=True,
-                stdout="completed",
-                stderr="warning",
-                exit_code=7,
-            )
-
-    backend = CustomBackend()
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('test')")
-
-    assert result.success is True
-    assert result.stdout == "completed"
-    assert result.stderr == "warning"
-    assert result.exit_code == 7
     
 def test_runtime_sandbox_normalizes_timeout_to_float_for_backend():
     class SpyBackend(NoIsolationBackend):
@@ -7825,18 +5978,6 @@ def test_runtime_sandbox_uses_default_backend_when_none_is_provided():
     assert type(sandbox.isolation_backend) is NoIsolationBackend
     assert sandbox.isolation_backend.is_available() is False
     
-def test_runtime_sandbox_uses_security_policy_network_setting():
-    policy = SandboxSecurityPolicy(
-        allow_network=False
-    )
-
-    sandbox = RuntimeSandbox(
-        allow_network=True,
-        security_policy=policy,
-    )
-
-    assert sandbox.allow_network is False
-    assert sandbox.security_policy is policy
     
 def test_runtime_sandbox_preserves_security_policy_identity():
     policy = SandboxSecurityPolicy(
@@ -8197,116 +6338,9 @@ def test_runtime_sandbox_preserves_valid_isolation_backend_result():
 
     assert result is expected
     
-def test_runtime_sandbox_does_not_use_backend_without_required_isolation():
-    class TrackingBackend(NoIsolationBackend):
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            raise AssertionError("Backend should not be called.")
-
-    backend = TrackingBackend()
-
-    sandbox = unsafe_sandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=False
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('test')")
-
-    assert result.success is True
-    assert result.stdout.strip() == "test"
     
-def test_runtime_sandbox_rejects_none_isolation_capabilities():
-    class BrokenBackend(NoIsolationBackend):
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return None
-
-        def run(self, code, timeout):
-            raise AssertionError("Backend should not execute.")
-
-    backend = BrokenBackend()
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('test')")
-
-    assert result.success is False
-    assert "capabilities" in result.stderr.lower()
-    assert result.exit_code == -1
     
-def test_runtime_sandbox_rejects_invalid_isolation_capabilities_type():
-    class BrokenBackend(NoIsolationBackend):
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return "not capabilities"
-
-        def run(self, code, timeout):
-            raise AssertionError("Backend should not execute.")
-
-    backend = BrokenBackend()
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('test')")
-
-    assert result.success is False
-    assert "invalid capabilities" in result.stderr.lower()
-    assert result.exit_code == -1
     
-def test_runtime_sandbox_rejects_invalid_backend_availability_type():
-    class BrokenBackend(NoIsolationBackend):
-        def is_available(self):
-            return "yes"
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            raise AssertionError("Backend should not execute.")
-
-    backend = BrokenBackend()
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('test')")
-
-    assert result.success is False
-    assert "availability" in result.stderr.lower()
-    assert result.exit_code == -1
     
 def test_runtime_sandbox_checks_backend_availability():
     class TrackingBackend(NoIsolationBackend):
@@ -8338,33 +6372,6 @@ def test_runtime_sandbox_checks_backend_availability():
     assert backend.checked is True
     assert result.success is False
     
-def test_runtime_sandbox_does_not_execute_unavailable_backend():
-    class UnavailableBackend(NoIsolationBackend):
-        def is_available(self):
-            return False
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            raise AssertionError("Unavailable backend must not execute.")
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True
-        ),
-        isolation_backend=UnavailableBackend(),
-    )
-
-    result = sandbox.run("print('test')")
-
-    assert result.success is False
-    assert "unavailable" in result.stderr.lower()
-    assert result.exit_code == -1
     
 def test_runtime_sandbox_checks_capabilities_before_execution():
     class InvalidCapabilitiesBackend(NoIsolationBackend):
@@ -8434,257 +6441,13 @@ def test_runtime_sandbox_executes_backend_with_complete_capabilities():
     assert result.stdout == "backend executed"
     assert result.exit_code == 0
     
-def test_runtime_sandbox_rejects_none_from_backend():
-    class NoneResultBackend(NoIsolationBackend):
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            return None
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True
-        ),
-        isolation_backend=NoneResultBackend(),
-    )
-
-    result = sandbox.run("print('test')")
-
-    assert result.success is False
-    assert "invalid result" in result.stderr.lower()
-    assert result.exit_code == -1
     
-def test_runtime_sandbox_rejects_invalid_backend_result_type():
-    class InvalidResultBackend(NoIsolationBackend):
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            return "invalid result"
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True
-        ),
-        isolation_backend=InvalidResultBackend(),
-    )
-
-    result = sandbox.run("print('test')")
-
-    assert result.success is False
-    assert "invalid result" in result.stderr.lower()
-    assert result.exit_code == -1
     
-def test_runtime_sandbox_rejects_invalid_backend_success_type():
-    class BrokenResultBackend(NoIsolationBackend):
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            return SandboxResult(
-                success="yes",
-                stdout="test",
-                stderr="",
-                exit_code=0,
-            )
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True
-        ),
-        isolation_backend=BrokenResultBackend(),
-    )
-
-    result = sandbox.run("print('test')")
-
-    assert result.success is False
-    assert "invalid result" in result.stderr.lower()
-    assert result.exit_code == -1
     
-def test_runtime_sandbox_rejects_invalid_backend_exit_code_type():
-    class BrokenResultBackend(NoIsolationBackend):
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            return SandboxResult(
-                success=True,
-                stdout="test",
-                stderr="",
-                exit_code="zero",
-            )
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True
-        ),
-        isolation_backend=BrokenResultBackend(),
-    )
-
-    result = sandbox.run("print('test')")
-
-    assert result.success is False
-    assert "invalid result" in result.stderr.lower()
-    assert result.exit_code == -1
     
-def test_runtime_sandbox_rejects_invalid_backend_stdout_type():
-    class BrokenResultBackend(NoIsolationBackend):
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            return SandboxResult(
-                success=True,
-                stdout=123,
-                stderr="",
-                exit_code=0,
-            )
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True
-        ),
-        isolation_backend=BrokenResultBackend(),
-    )
-
-    result = sandbox.run("print('test')")
-
-    assert result.success is False
-    assert "invalid result" in result.stderr.lower()
-    assert result.exit_code == -1
     
-def test_runtime_sandbox_rejects_invalid_backend_stderr_type():
-    class BrokenResultBackend(NoIsolationBackend):
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            return SandboxResult(
-                success=True,
-                stdout="test",
-                stderr=123,
-                exit_code=0,
-            )
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True
-        ),
-        isolation_backend=BrokenResultBackend(),
-    )
-
-    result = sandbox.run("print('test')")
-
-    assert result.success is False
-    assert "invalid result" in result.stderr.lower()
-    assert result.exit_code == -1
     
-def test_runtime_sandbox_preserves_valid_backend_result():
-    expected = SandboxResult(
-        success=True,
-        stdout="hello from backend",
-        stderr="warning",
-        exit_code=0,
-    )
-
-    class ValidBackend(NoIsolationBackend):
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            return expected
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True
-        ),
-        isolation_backend=ValidBackend(),
-    )
-
-    result = sandbox.run("print('test')")
-
-    assert result is expected
-    assert result.success is True
-    assert result.stdout == "hello from backend"
-    assert result.stderr == "warning"
-    assert result.exit_code == 0
     
-def test_runtime_sandbox_does_not_use_backend_without_required_isolation():
-    class ExplodingBackend(NoIsolationBackend):
-        def is_available(self):
-            raise AssertionError("Backend should not be checked.")
-
-        def capabilities(self):
-            raise AssertionError("Backend should not be queried.")
-
-        def run(self, code, timeout):
-            raise AssertionError("Backend should not execute.")
-
-    sandbox = unsafe_sandbox(
-        security_policy=SandboxSecurityPolicy(
-            allow_network=False,
-            require_network_isolation=False,
-            require_filesystem_isolation=False,
-            require_process_isolation=False,
-        ),
-        isolation_backend=ExplodingBackend(),
-    )
-
-    result = sandbox.run("print('hello')")
-
-    assert result.success is True
-    assert result.stdout.strip() == "hello"
-    assert result.exit_code == 0
     
 def test_runtime_sandbox_rejects_none_isolation_capabilities():
     class BrokenCapabilitiesBackend(NoIsolationBackend):
@@ -8869,21 +6632,6 @@ def test_windows_isolation_backend_reports_no_capabilities():
     assert capabilities.filesystem_isolation is False
     assert capabilities.process_isolation is False
     
-def test_isolation_capabilities_are_immutable():
-    capabilities = IsolationCapabilities(
-        network_isolation=True,
-        filesystem_isolation=False,
-        process_isolation=True,
-    )
-
-    try:
-        capabilities.network_isolation = False
-    except (AttributeError, TypeError):
-        pass
-    else:
-        raise AssertionError(
-            "IsolationCapabilities should be immutable."
-        )
         
 def test_sandbox_security_policy_is_immutable():
     policy = SandboxSecurityPolicy(
@@ -8903,133 +6651,12 @@ def test_sandbox_security_policy_is_immutable():
         )
         
         
-def test_sandbox_security_policy_defaults_are_safe():
-    policy = SandboxSecurityPolicy()
-
-    assert policy.allow_network is False
-    assert policy.require_network_isolation is False
-    assert policy.require_filesystem_isolation is False
-    assert policy.require_process_isolation is False
     
-def test_allow_network_does_not_claim_network_isolation():
-    policy = SandboxSecurityPolicy(
-        allow_network=True
-    )
-
-    assert policy.network_allowed() is True
-    assert policy.requires_network_isolation() is False
     
-def test_runtime_sandbox_uses_custom_security_policy():
-    policy = SandboxSecurityPolicy(
-        allow_network=True,
-        require_network_isolation=True,
-        require_filesystem_isolation=False,
-        require_process_isolation=False,
-    )
-
-    sandbox = RuntimeSandbox(
-        security_policy=policy
-    )
-
-    assert sandbox.security_policy is policy
-    assert sandbox.allow_network is True
     
-def test_runtime_sandbox_allow_network_creates_policy():
-    sandbox = RuntimeSandbox(
-        allow_network=True
-    )
-
-    assert sandbox.security_policy.allow_network is True
-    assert sandbox.allow_network is True
-    assert sandbox.security_policy.require_network_isolation is False
     
-def test_runtime_sandbox_uses_custom_isolation_backend():
-    backend = NoIsolationBackend()
-
-    sandbox = RuntimeSandbox(
-        isolation_backend=backend
-    )
-
-    assert sandbox.isolation_backend is backend
-def test_runtime_sandbox_defaults_to_no_isolation_backend():
-    sandbox = RuntimeSandbox()
-
-    assert isinstance(
-        sandbox.isolation_backend,
-        NoIsolationBackend,
-    )
-def test_runtime_sandbox_preserves_timeout_value():
-    sandbox = RuntimeSandbox(timeout=2)
-
-    assert sandbox.timeout == 2.0
-    assert isinstance(sandbox.timeout, float)
     
-def test_runtime_sandbox_passes_timeout_to_backend():
-    class TrackingBackend(NoIsolationBackend):
-        def __init__(self):
-            self.received_timeout = None
-
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            self.received_timeout = timeout
-            return SandboxResult(
-                success=True,
-                stdout="ok",
-                stderr="",
-                exit_code=0,
-            )
-
-    backend = TrackingBackend()
-
-    sandbox = RuntimeSandbox(
-        timeout=3.5,
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('test')")
-
-    assert result.success is True
-    assert backend.received_timeout == 3.5
     
-def test_runtime_sandbox_handles_backend_exception():
-    class FailingBackend(NoIsolationBackend):
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            raise RuntimeError("backend execution failed")
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True
-        ),
-        isolation_backend=FailingBackend(),
-    )
-
-    result = sandbox.run("print('test')")
-
-    assert result.success is False
-    assert "backend execution failed" in result.stderr
-    assert result.exit_code == -1
     
 def test_runtime_sandbox_rejects_missing_network_capability_before_run():
     class TrackingBackend(NoIsolationBackend):
@@ -9210,45 +6837,6 @@ def test_runtime_sandbox_does_not_execute_unavailable_backend():
     assert result.exit_code == -1
     assert "unavailable" in result.stderr.lower()
     
-def test_runtime_sandbox_passes_timeout_to_backend():
-    class TrackingBackend(NoIsolationBackend):
-        def __init__(self):
-            self.received_timeout = None
-
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            self.received_timeout = timeout
-
-            return SandboxResult(
-                success=True,
-                stdout="ok",
-                stderr="",
-                exit_code=0,
-            )
-
-    backend = TrackingBackend()
-
-    sandbox = RuntimeSandbox(
-        timeout=7.5,
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('test')")
-
-    assert result.success is True
-    assert backend.received_timeout == 7.5
     
 def test_runtime_sandbox_rejects_none_from_backend():
     class NoneBackend(NoIsolationBackend):
@@ -9280,183 +6868,9 @@ def test_runtime_sandbox_rejects_none_from_backend():
     assert result.exit_code == -1
     assert "invalid" in result.stderr.lower()
     
-def test_runtime_sandbox_rejects_invalid_backend_success_type():
-    class InvalidBackend(NoIsolationBackend):
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            return SandboxResult(
-                success="yes",
-                stdout="ok",
-                stderr="",
-                exit_code=0,
-            )
-
-    backend = InvalidBackend()
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('test')")
-
-    assert result.success is False
-    assert result.exit_code == -1
-    assert "invalid" in result.stderr.lower()
     
-def test_runtime_sandbox_rejects_invalid_backend_exit_code_type():
-    class InvalidBackend(NoIsolationBackend):
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            return SandboxResult(
-                success=True,
-                stdout="ok",
-                stderr="",
-                exit_code="zero",
-            )
-
-    backend = InvalidBackend()
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('test')")
-
-    assert result.success is False
-    assert result.exit_code == -1
-    assert "invalid" in result.stderr.lower()
     
-def test_runtime_sandbox_rejects_invalid_backend_stdout_type():
-    class InvalidBackend(NoIsolationBackend):
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            return SandboxResult(
-                success=True,
-                stdout=123,
-                stderr="",
-                exit_code=0,
-            )
-
-    backend = InvalidBackend()
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('test')")
-
-    assert result.success is False
-    assert result.exit_code == -1
-    assert "invalid" in result.stderr.lower()
-def test_runtime_sandbox_rejects_invalid_backend_stderr_type():
-    class InvalidBackend(NoIsolationBackend):
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            return SandboxResult(
-                success=True,
-                stdout="ok",
-                stderr=123,
-                exit_code=0,
-            )
-
-    backend = InvalidBackend()
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('test')")
-
-    assert result.success is False
-    assert result.exit_code == -1
-    assert "invalid" in result.stderr.lower()
     
-def test_runtime_sandbox_preserves_valid_backend_result():
-    expected = SandboxResult(
-        success=True,
-        stdout="hello from backend",
-        stderr="warning",
-        exit_code=0,
-    )
-
-    class ValidBackend(NoIsolationBackend):
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            return expected
-
-    backend = ValidBackend()
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('test')")
-
-    assert result is expected
-    assert result.success is True
-    assert result.stdout == "hello from backend"
-    assert result.stderr == "warning"
-    assert result.exit_code == 0
     
 def test_runtime_sandbox_does_not_use_backend_without_required_isolation():
     class TrackingBackend(NoIsolationBackend):
@@ -9560,74 +6974,17 @@ def test_runtime_sandbox_uses_custom_isolation_backend():
 
     assert sandbox.isolation_backend is backend
     
-def test_runtime_sandbox_defaults_to_no_isolation_backend():
-    sandbox = RuntimeSandbox()
-
-    assert isinstance(
-        sandbox.isolation_backend,
-        NoIsolationBackend,
-    )
-
-    assert sandbox.isolation_backend.is_available() is False
 def test_runtime_sandbox_preserves_timeout_value():
     sandbox = RuntimeSandbox(timeout=5)
 
     assert sandbox.timeout == 5.0
     assert isinstance(sandbox.timeout, float)
-def test_runtime_sandbox_rejects_zero_timeout():
-    try:
-        RuntimeSandbox(timeout=0)
-        raise AssertionError("Zero timeout should be rejected.")
-    except ValueError as exc:
-        assert "greater than zero" in str(exc).lower()
-def test_runtime_sandbox_rejects_zero_max_output_size():
-    try:
-        RuntimeSandbox(max_output_size=0)
-        raise AssertionError("Zero max_output_size should be rejected.")
-    except ValueError as exc:
-        assert "greater than zero" in str(exc).lower()
 def test_runtime_sandbox_preserves_max_output_size():
     sandbox = RuntimeSandbox(max_output_size=5000)
 
     assert sandbox.max_output_size == 5000
-def test_runtime_sandbox_rejects_negative_timeout():
-    try:
-        RuntimeSandbox(timeout=-1)
-        raise AssertionError("Negative timeout should be rejected.")
-    except ValueError as exc:
-        assert "greater than zero" in str(exc).lower()
         
-def test_runtime_sandbox_rejects_negative_max_output_size():
-    try:
-        RuntimeSandbox(max_output_size=-1)
-        raise AssertionError("Negative max_output_size should be rejected.")
-    except ValueError as exc:
-        assert "greater than zero" in str(exc).lower()
-def test_runtime_sandbox_rejects_non_string_code():
-    sandbox = RuntimeSandbox()
-
-    result = sandbox.run(123)
-
-    assert result.success is False
-    assert result.exit_code == -1
-    assert "code must be a string" in result.stderr.lower()
     
-def test_runtime_sandbox_rejects_empty_code():
-    sandbox = RuntimeSandbox()
-
-    result = sandbox.run("")
-
-    assert result.success is False
-    assert result.exit_code == -1
-    assert "code cannot be empty" in result.stderr.lower()
-def test_runtime_sandbox_rejects_whitespace_only_code():
-    sandbox = RuntimeSandbox()
-
-    result = sandbox.run("   \n\t   ")
-
-    assert result.success is False
-    assert result.exit_code == -1
-    assert "code cannot be empty" in result.stderr.lower()
 def test_runtime_sandbox_executes_python_successfully():
     sandbox = unsafe_sandbox()
 
@@ -9689,31 +7046,6 @@ def test_runtime_sandbox_handles_unicode_output():
     assert result.success is True
     assert result.exit_code == 0
     assert result.stdout.strip() == "AEGIS — اختبار عربي 🚀"
-def test_runtime_sandbox_uses_temporary_working_directory():
-    sandbox = unsafe_sandbox()
-
-    result = sandbox.run(
-        "import os; print(os.getcwd())"
-    )
-
-    assert result.success is True
-    assert result.exit_code == 0
-    assert result.stdout.strip() != r"E:\AEGIS"
-def test_runtime_sandbox_cleans_up_temporary_directory():
-    sandbox = unsafe_sandbox()
-
-    result = sandbox.run(
-        "import os; print(os.getcwd())"
-    )
-
-    temp_dir = result.stdout.strip()
-
-    assert result.success is True
-    assert temp_dir
-
-    import os
-
-    assert not os.path.exists(temp_dir)
 def test_runtime_sandbox_supports_file_operations():
     sandbox = unsafe_sandbox()
 
@@ -10128,40 +7460,16 @@ def test_runtime_sandbox_limits_unicode_stderr_by_characters():
     assert result.exit_code == -1
     assert result.stderr.startswith("أهلاً")
     assert "Error output exceeded the maximum allowed size." in result.stderr
-def test_runtime_sandbox_rejects_non_integer_max_output_size():
-    with pytest.raises((TypeError, ValueError)):
-        RuntimeSandbox(max_output_size=10.5)
-def test_runtime_sandbox_rejects_boolean_max_output_size():
-    with pytest.raises(TypeError):
-        RuntimeSandbox(max_output_size=True)
-def test_runtime_sandbox_rejects_string_max_output_size():
-    with pytest.raises(TypeError):
-        RuntimeSandbox(max_output_size="10")
-def test_runtime_sandbox_rejects_boolean_timeout():
-    with pytest.raises((TypeError, ValueError)):
-        RuntimeSandbox(timeout=True)
 def test_runtime_sandbox_accepts_float_timeout():
     sandbox = RuntimeSandbox(timeout=0.5)
 
     assert sandbox.timeout == 0.5
-def test_runtime_sandbox_rejects_string_timeout():
-    with pytest.raises(TypeError):
-        RuntimeSandbox(timeout="10")
-def test_runtime_sandbox_rejects_none_timeout():
-    with pytest.raises(TypeError):
-        RuntimeSandbox(timeout=None)
-def test_runtime_sandbox_rejects_none_max_output_size():
-    with pytest.raises(TypeError):
-        RuntimeSandbox(max_output_size=None)
 def test_runtime_sandbox_rejects_zero_float_timeout():
     with pytest.raises(ValueError):
         RuntimeSandbox(timeout=0.0)
 def test_runtime_sandbox_rejects_zero_float_max_output_size():
     with pytest.raises(ValueError):
         RuntimeSandbox(max_output_size=0.0)
-def test_runtime_sandbox_rejects_float_max_output_size():
-    with pytest.raises(TypeError):
-        RuntimeSandbox(max_output_size=10.0)
 def test_runtime_sandbox_rejects_negative_float_max_output_size():
     with pytest.raises(TypeError):
         RuntimeSandbox(max_output_size=-1.5)
@@ -10284,16 +7592,6 @@ def test_runtime_sandbox_handles_empty_outputs():
     assert result.exit_code == 0
     assert result.stdout == ""
     assert result.stderr == ""
-def test_runtime_sandbox_preserves_multiline_stdout():
-    sandbox = unsafe_sandbox(max_output_size=20)
-
-    result = sandbox.run(
-        "print('line1'); print('line2')"
-    )
-
-    assert result.success is True
-    assert result.exit_code == 0
-    assert result.stdout == "line1\nline2\n"
 def test_runtime_sandbox_truncates_multiline_stdout():
     sandbox = unsafe_sandbox(max_output_size=10)
 
@@ -10433,9 +7731,6 @@ def test_runtime_sandbox_removes_temporary_directory():
     import os
 
     assert os.path.exists(working_directory) is False
-def test_runtime_sandbox_rejects_invalid_isolation_backend():
-    with pytest.raises(TypeError, match="isolation backend"):
-        RuntimeSandbox(isolation_backend=object())
 def test_runtime_sandbox_accepts_custom_isolation_backend():
     class CustomBackend(IsolationBackend):
         def is_available(self):
@@ -10490,41 +7785,6 @@ def test_runtime_sandbox_checks_backend_capabilities_before_run():
     assert result.success is False
     assert result.exit_code == -1
     assert "network isolation" in result.stderr.lower()
-    assert backend.run_called is False
-def test_runtime_sandbox_does_not_run_unavailable_backend():
-    class UnavailableBackend(IsolationBackend):
-        def __init__(self):
-            self.run_called = False
-
-        def is_available(self):
-            return False
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            self.run_called = True
-            raise AssertionError("Unavailable backend must not run.")
-
-    backend = UnavailableBackend()
-
-    policy = SandboxSecurityPolicy(
-        require_network_isolation=True,
-    )
-
-    sandbox = RuntimeSandbox(
-        security_policy=policy,
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('AEGIS')")
-
-    assert result.success is False
-    assert "unavailable" in result.stderr.lower()
     assert backend.run_called is False
 def test_runtime_sandbox_does_not_run_backend_without_required_capability():
     class TrackingBackend(IsolationBackend):
@@ -10665,35 +7925,6 @@ def test_runtime_sandbox_handles_backend_exception():
     assert result.stdout == ""
     assert "BACKEND-FAILED" in result.stderr
     assert result.exit_code == -1
-def test_runtime_sandbox_rejects_invalid_backend_result_type():
-    class InvalidBackend(IsolationBackend):
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            return "INVALID-RESULT"
-
-    backend = InvalidBackend()
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True,
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('AEGIS')")
-
-    assert result.success is False
-    assert "invalid result" in result.stderr.lower()
-    assert result.exit_code == -1
 def test_runtime_sandbox_rejects_invalid_backend_success_type():
     class InvalidBackend(IsolationBackend):
         def is_available(self):
@@ -10780,40 +8011,6 @@ def test_runtime_sandbox_rejects_invalid_backend_stdout_type():
                 stdout=123,
                 stderr="",
                 exit_code=0,
-            )
-
-    backend = InvalidBackend()
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True,
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('AEGIS')")
-
-    assert result.success is False
-    assert "invalid result" in result.stderr.lower()
-    assert result.exit_code == -1
-def test_runtime_sandbox_rejects_invalid_backend_exit_code_type():
-    class InvalidBackend(IsolationBackend):
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            return SandboxResult(
-                success=True,
-                stdout="AEGIS",
-                stderr="",
-                exit_code="0",
             )
 
     backend = InvalidBackend()
@@ -11116,49 +8313,6 @@ def test_runtime_sandbox_accepts_backend_with_all_required_capabilities():
     assert result.stdout == "AEGIS"
     assert result.stderr == ""
     assert result.exit_code == 0
-def test_runtime_sandbox_passes_code_and_timeout_to_backend():
-    class RecordingBackend(IsolationBackend):
-        def __init__(self):
-            self.received_code = None
-            self.received_timeout = None
-
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            self.received_code = code
-            self.received_timeout = timeout
-
-            return SandboxResult(
-                success=True,
-                stdout="AEGIS",
-                stderr="",
-                exit_code=0,
-            )
-
-    backend = RecordingBackend()
-
-    sandbox = RuntimeSandbox(
-        timeout=7.5,
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True,
-        ),
-        isolation_backend=backend,
-    )
-
-    code = "print('AEGIS')"
-    result = sandbox.run(code)
-
-    assert result.success is True
-    assert backend.received_code == code
-    assert backend.received_timeout == 7.5
 def test_runtime_sandbox_checks_all_required_capabilities_before_run():
     class LimitedBackend(IsolationBackend):
         def __init__(self):
@@ -11194,165 +8348,6 @@ def test_runtime_sandbox_checks_all_required_capabilities_before_run():
     assert result.success is False
     assert backend.run_called is False
     assert result.exit_code == -1
-def test_runtime_sandbox_does_not_run_unavailable_backend():
-    class UnavailableBackend(IsolationBackend):
-        def __init__(self):
-            self.run_called = False
-
-        def is_available(self):
-            return False
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            self.run_called = True
-            raise AssertionError("Unavailable backend must not run.")
-
-    backend = UnavailableBackend()
-
-    sandbox = RuntimeSandbox(
-       security_policy=SandboxSecurityPolicy(
-    allow_network=True,
-    require_network_isolation=True,
-),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('AEGIS')")
-
-    assert result.success is False
-    assert backend.run_called is False
-    assert result.exit_code == -1
-def test_runtime_sandbox_preserves_backend_failure_result():
-    class FailingBackend(IsolationBackend):
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            return SandboxResult(
-                success=False,
-                stdout="partial output",
-                stderr="execution failed",
-                exit_code=1,
-            )
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True,
-        ),
-        isolation_backend=FailingBackend(),
-    )
-
-    result = sandbox.run("raise RuntimeError('failure')")
-
-    assert result.success is False
-    assert result.stdout == "partial output"
-    assert result.stderr == "execution failed"
-    assert result.exit_code == 1
-def test_runtime_sandbox_does_not_run_backend_with_invalid_capabilities():
-    class InvalidCapabilitiesBackend(IsolationBackend):
-        def __init__(self):
-            self.run_called = False
-
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return None
-
-        def run(self, code, timeout):
-            self.run_called = True
-            raise AssertionError("Backend must not run.")
-
-    backend = InvalidCapabilitiesBackend()
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True,
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('AEGIS')")
-
-    assert result.success is False
-    assert backend.run_called is False
-    assert "invalid capabilities" in result.stderr.lower()
-    assert result.exit_code == -1
-def test_runtime_sandbox_converts_backend_exception_to_failure_result():
-    class ExplodingBackend(IsolationBackend):
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            raise RuntimeError("backend crashed")
-
-    sandbox = RuntimeSandbox(
-      security_policy=SandboxSecurityPolicy(
-    allow_network=True,
-    require_network_isolation=True,
-),
-        isolation_backend=ExplodingBackend(),
-    )
-
-    result = sandbox.run("print('AEGIS')")
-
-    assert result.success is False
-    assert result.stdout == ""
-    assert "backend crashed" in result.stderr
-    assert result.exit_code == -1
-def test_runtime_sandbox_preserves_backend_result_fields():
-    class CustomBackend(IsolationBackend):
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            return SandboxResult(
-                success=True,
-                stdout="custom stdout",
-                stderr="custom stderr",
-                exit_code=7,
-            )
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True,
-        ),
-        isolation_backend=CustomBackend(),
-    )
-
-    result = sandbox.run("print('AEGIS')")
-
-    assert result.success is True
-    assert result.stdout == "custom stdout"
-    assert result.stderr == "custom stderr"
-    assert result.exit_code == 7
 def test_runtime_sandbox_rejects_missing_capability_before_backend_execution():
     class LimitedBackend(IsolationBackend):
         def __init__(self):
@@ -11387,45 +8382,6 @@ def test_runtime_sandbox_rejects_missing_capability_before_backend_execution():
     assert backend.run_called is False
     assert "filesystem isolation capability" in result.stderr.lower()
     assert result.exit_code == -1
-def test_runtime_sandbox_passes_timeout_as_float_to_backend():
-    class RecordingBackend(IsolationBackend):
-        def __init__(self):
-            self.received_timeout = None
-
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            self.received_timeout = timeout
-            return SandboxResult(
-                success=True,
-                stdout="AEGIS",
-                stderr="",
-                exit_code=0,
-            )
-
-    backend = RecordingBackend()
-
-    sandbox = RuntimeSandbox(
-        timeout=5,
-        security_policy=SandboxSecurityPolicy(
-            require_network_isolation=True,
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('AEGIS')")
-
-    assert result.success is True
-    assert backend.received_timeout == 5.0
-    assert isinstance(backend.received_timeout, float)
 def test_runtime_sandbox_preserves_backend_code_exactly():
     class RecordingBackend(IsolationBackend):
         def __init__(self):
@@ -12217,46 +9173,6 @@ def test_runtime_sandbox_rejects_invalid_backend_result_type():
     assert result.success is False
     assert result.exit_code == -1
     assert "invalid result" in result.stderr.lower()
-def test_runtime_sandbox_does_not_run_unavailable_backend():
-    class UnavailableBackend(IsolationBackend):
-        def __init__(self):
-            self.run_called = False
-
-        def is_available(self):
-            return False
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            self.run_called = True
-            return SandboxResult(
-                success=True,
-                stdout="should-not-run",
-                stderr="",
-                exit_code=0,
-            )
-
-    backend = UnavailableBackend()
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            allow_network=True,
-            require_network_isolation=True,
-        ),
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('AEGIS')")
-
-    assert result.success is False
-    assert backend.run_called is False
-    assert result.exit_code == -1
-    assert "unavailable" in result.stderr.lower()
 def test_runtime_sandbox_converts_backend_exception_to_failure():
     class FailingBackend(IsolationBackend):
         def is_available(self):
@@ -12319,39 +9235,6 @@ def test_runtime_sandbox_preserves_backend_result_fields():
     assert result.stdout == "custom stdout"
     assert result.stderr == "custom stderr"
     assert result.exit_code == 42
-def test_runtime_sandbox_rejects_backend_result_with_invalid_success_type():
-    class BadBackend(IsolationBackend):
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            return SandboxResult(
-                success="yes",
-                stdout="",
-                stderr="",
-                exit_code=0,
-            )
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            allow_network=True,
-            require_network_isolation=True,
-        ),
-        isolation_backend=BadBackend(),
-    )
-
-    result = sandbox.run("print('AEGIS')")
-
-    assert result.success is False
-    assert result.exit_code == -1
-    assert "invalid result" in result.stderr.lower()
 def test_runtime_sandbox_rejects_backend_result_with_invalid_stdout_type():
     class BadBackend(IsolationBackend):
         def is_available(self):
@@ -12814,35 +9697,6 @@ def test_runtime_sandbox_does_not_run_unavailable_backend():
     assert result.exit_code == -1
     assert backend.run_called is False
     assert "unavailable" in result.stderr.lower()
-def test_runtime_sandbox_converts_backend_exception_to_failure_result():
-    class ExplodingBackend(IsolationBackend):
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            raise RuntimeError("backend exploded")
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            allow_network=True,
-            require_network_isolation=True,
-        ),
-        isolation_backend=ExplodingBackend(),
-    )
-
-    result = sandbox.run("print('AEGIS')")
-
-    assert result.success is False
-    assert result.stdout == ""
-    assert "backend exploded" in result.stderr
-    assert result.exit_code == -1
 def test_runtime_sandbox_does_not_run_backend_with_invalid_capabilities():
     class BadCapabilitiesBackend(IsolationBackend):
         def __init__(self):
@@ -12913,39 +9767,6 @@ def test_runtime_sandbox_preserves_backend_failure_result():
     assert result.stdout == "partial"
     assert result.stderr == "execution failed"
     assert result.exit_code == 42
-def test_runtime_sandbox_rejects_backend_with_invalid_availability_type():
-    class BadAvailabilityBackend(IsolationBackend):
-        def is_available(self):
-            return "yes"
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            return SandboxResult(
-                success=True,
-                stdout="SHOULD NOT RUN",
-                stderr="",
-                exit_code=0,
-            )
-
-    sandbox = RuntimeSandbox(
-        security_policy=SandboxSecurityPolicy(
-            allow_network=True,
-            require_network_isolation=True,
-        ),
-        isolation_backend=BadAvailabilityBackend(),
-    )
-
-    result = sandbox.run("print('AEGIS')")
-
-    assert result.success is False
-    assert result.exit_code == -1
-    assert "invalid availability" in result.stderr.lower()
 def test_runtime_sandbox_rejects_invalid_isolation_backend():
     try:
         RuntimeSandbox(
@@ -12962,16 +9783,6 @@ def test_runtime_sandbox_rejects_non_numeric_timeout():
         assert "timeout must be a number" in str(exc).lower()
     else:
         assert False, "RuntimeSandbox should reject a non-numeric timeout"
-def test_runtime_sandbox_rejects_non_finite_timeout():
-    import math
-
-    for timeout in (math.nan, math.inf, -math.inf):
-        try:
-            RuntimeSandbox(timeout=timeout)
-        except ValueError as exc:
-            assert "timeout must be finite" in str(exc).lower()
-        else:
-            assert False, "RuntimeSandbox should reject a non-finite timeout"
 def test_runtime_sandbox_rejects_non_integer_max_output_size():
     try:
         RuntimeSandbox(max_output_size=100.5)
@@ -12979,13 +9790,6 @@ def test_runtime_sandbox_rejects_non_integer_max_output_size():
         assert "max output size must be an integer" in str(exc).lower()
     else:
         assert False, "RuntimeSandbox should reject a non-integer max_output_size"
-def test_runtime_sandbox_rejects_boolean_max_output_size():
-    try:
-        RuntimeSandbox(max_output_size=True)
-    except TypeError as exc:
-        assert "max output size must be an integer" in str(exc).lower()
-    else:
-        assert False, "RuntimeSandbox should reject a boolean max_output_size"
 def test_runtime_sandbox_rejects_non_positive_max_output_size():
     for size in (0, -1):
         try:
@@ -13354,27 +10158,6 @@ def test_runtime_sandbox_rejects_network_access_without_isolation_backend():
     assert result.success is False
     assert result.exit_code == -1
     assert "network isolation backend" in result.stderr.lower()
-def test_runtime_sandbox_does_not_call_backend_when_network_is_disabled():
-    class TrackingBackend(NoIsolationBackend):
-        def __init__(self):
-            self.called = False
-
-        def run(self, code, timeout):
-            self.called = True
-            raise AssertionError("Backend must not be called.")
-
-    backend = TrackingBackend()
-
-    sandbox = unsafe_sandbox(
-        allow_network=False,
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('hello')")
-
-    assert result.success is True
-    assert result.stdout.strip() == "hello"
-    assert backend.called is False
 def test_runtime_sandbox_preserves_custom_timeout():
     sandbox = RuntimeSandbox(timeout=3.5)
 
@@ -13903,88 +10686,6 @@ def test_runtime_sandbox_rejects_backend_missing_multiple_required_capabilities(
     assert result.success is False
     assert result.exit_code == -1
     assert "network isolation" in result.stderr.lower()
-def test_runtime_sandbox_does_not_call_backend_when_capabilities_are_insufficient():
-    class TrackingBackend(IsolationBackend):
-        def __init__(self):
-            self.called = False
-
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=False,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            self.called = True
-            raise AssertionError("Backend must not be called.")
-
-    backend = TrackingBackend()
-
-    policy = SandboxSecurityPolicy(
-        allow_network=True,
-        require_network_isolation=True,
-    )
-
-    sandbox = RuntimeSandbox(
-        security_policy=policy,
-        isolation_backend=backend,
-    )
-
-    result = sandbox.run("print('should not run')")
-
-    assert result.success is False
-    assert backend.called is False
-def test_runtime_sandbox_passes_code_and_timeout_to_backend():
-    class RecordingBackend(IsolationBackend):
-        def __init__(self):
-            self.received_code = None
-            self.received_timeout = None
-
-        def is_available(self):
-            return True
-
-        def capabilities(self):
-            return IsolationCapabilities(
-                network_isolation=True,
-                filesystem_isolation=True,
-                process_isolation=True,
-            )
-
-        def run(self, code, timeout):
-            self.received_code = code
-            self.received_timeout = timeout
-
-            return SandboxResult(
-                success=True,
-                stdout="backend ok",
-                stderr="",
-                exit_code=0,
-            )
-
-    backend = RecordingBackend()
-
-    policy = SandboxSecurityPolicy(
-        allow_network=True,
-        require_network_isolation=True,
-    )
-
-    sandbox = RuntimeSandbox(
-        timeout=3,
-        security_policy=policy,
-        isolation_backend=backend,
-    )
-
-    code = "print('hello')"
-    result = sandbox.run(code)
-
-    assert result.success is True
-    assert result.stdout == "backend ok"
-    assert backend.received_code == code
-    assert backend.received_timeout == 3.0
 def test_runtime_sandbox_preserves_backend_success_result_exactly():
     class SuccessBackend(IsolationBackend):
         def is_available(self):
